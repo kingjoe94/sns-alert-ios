@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode local user data
+**/xcuserdata/
+**/*.xcuserstate
+**/xcdebugger/
+**/project.xcworkspace/xcuserdata/
+**/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# Xcode SCM/user artifacts
+**/*.xccheckout
+**/*.xcscmblueprint
+
+# Build artifacts
+DerivedData/
+build/
