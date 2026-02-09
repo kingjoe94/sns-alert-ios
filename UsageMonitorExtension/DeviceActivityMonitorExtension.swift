@@ -15,7 +15,7 @@ private let lastResetKey = "lastResetAt"
 private let resetGraceSeconds: TimeInterval = 30
 private let debugLogsKey = "debugLogs"
 private let defaultLimitMinutes = 30
-private let unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 120
+private let unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 180
 private let lastRearmAtKey = "lastRearmAt"
 private let monitorName = DeviceActivityName("daily-monitor")
 
