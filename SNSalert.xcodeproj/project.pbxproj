@@ -6,11 +6,124 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		6F6BD331A4494A79A134D670 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B1572F2BDE16001A97DB /* FamilyControls.framework */; };
+		ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B246B13D2F296A49001A97DB /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B13C2F296A48001A97DB /* DeviceActivity.framework */; };
+		B246B1452F296A49001A97DB /* UsageMonitorExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B246B14C2F29715F001A97DB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246B14B2F29715F001A97DB /* ContentView.swift */; };
+		B246B1582F2BDE17001A97DB /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B1572F2BDE16001A97DB /* FamilyControls.framework */; };
+		B246B15F2F2C5654001A97DB /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B15E2F2C5654001A97DB /* ManagedSettings.framework */; };
+		B246B1612F2C5654001A97DB /* ManagedSettingsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B1602F2C5654001A97DB /* ManagedSettingsUI.framework */; };
+		B246B1692F2C5654001A97DB /* ShieldConfigExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B246B15D2F2C5654001A97DB /* ShieldConfigExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B29D36222F315A4F00029996 /* ExtensionKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29D36212F315A4F00029996 /* ExtensionKit.framework */; };
+		B29D36242F315A5E00029996 /* ExtensionFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29D36232F315A5E00029996 /* ExtensionFoundation.framework */; };
+		E66BA498349747219632B1C1 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B13C2F296A48001A97DB /* DeviceActivity.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9513E43522564534B362F344 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B294D0AB2F228261002CDE1E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0F2C0C40A49043D1B9707CA9;
+			remoteInfo = UsageReportExtension;
+		};
+		B246B1432F296A49001A97DB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B294D0AB2F228261002CDE1E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B246B1392F296A48001A97DB;
+			remoteInfo = UsageMonitorExtension;
+		};
+		B246B1672F2C5654001A97DB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B294D0AB2F228261002CDE1E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B246B15C2F2C5654001A97DB;
+			remoteInfo = ShieldConfigExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B246B14A2F296A49001A97DB /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B246B1452F296A49001A97DB /* UsageMonitorExtension.appex in Embed Foundation Extensions */,
+				B246B1692F2C5654001A97DB /* ShieldConfigExtension.appex in Embed Foundation Extensions */,
+				ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageMonitorExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B246B13C2F296A48001A97DB /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
+		B246B14B2F29715F001A97DB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B246B1572F2BDE16001A97DB /* FamilyControls.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FamilyControls.framework; path = System/Library/Frameworks/FamilyControls.framework; sourceTree = SDKROOT; };
+		B246B15D2F2C5654001A97DB /* ShieldConfigExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShieldConfigExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B246B15E2F2C5654001A97DB /* ManagedSettings.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettings.framework; path = System/Library/Frameworks/ManagedSettings.framework; sourceTree = SDKROOT; };
+		B246B1602F2C5654001A97DB /* ManagedSettingsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettingsUI.framework; path = System/Library/Frameworks/ManagedSettingsUI.framework; sourceTree = SDKROOT; };
 		B294D0B32F228261002CDE1E /* SNSalert.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SNSalert.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B29D36212F315A4F00029996 /* ExtensionKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionKit.framework; path = System/Library/Frameworks/ExtensionKit.framework; sourceTree = SDKROOT; };
+		B29D36232F315A5E00029996 /* ExtensionFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionFoundation.framework; path = System/Library/Frameworks/ExtensionFoundation.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0ECB39A5474E4202A7A6AF07 /* Exceptions for "UsageReportExtension" folder in "UsageReportExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 0F2C0C40A49043D1B9707CA9 /* UsageReportExtension */;
+		};
+		B246B1462F296A49001A97DB /* Exceptions for "UsageMonitorExtension" folder in "UsageMonitorExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B246B1392F296A48001A97DB /* UsageMonitorExtension */;
+		};
+		B246B16A2F2C5654001A97DB /* Exceptions for "ShieldConfigExtension" folder in "ShieldConfigExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B246B15C2F2C5654001A97DB /* ShieldConfigExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		6AC7437CC8AF4F22BC93074F /* UsageReportExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0ECB39A5474E4202A7A6AF07 /* Exceptions for "UsageReportExtension" folder in "UsageReportExtension" target */,
+			);
+			path = UsageReportExtension;
+			sourceTree = "<group>";
+		};
+		B246B13E2F296A49001A97DB /* UsageMonitorExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B246B1462F296A49001A97DB /* Exceptions for "UsageMonitorExtension" folder in "UsageMonitorExtension" target */,
+			);
+			path = UsageMonitorExtension;
+			sourceTree = "<group>";
+		};
+		B246B1622F2C5654001A97DB /* ShieldConfigExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B246B16A2F2C5654001A97DB /* Exceptions for "ShieldConfigExtension" folder in "ShieldConfigExtension" target */,
+			);
+			path = ShieldConfigExtension;
+			sourceTree = "<group>";
+		};
 		B294D0B52F228261002CDE1E /* SNSalert */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SNSalert;
@@ -19,6 +132,24 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B246B1372F296A48001A97DB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B246B1582F2BDE17001A97DB /* FamilyControls.framework in Frameworks */,
+				B246B13D2F296A49001A97DB /* DeviceActivity.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B246B15A2F2C5654001A97DB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B246B15F2F2C5654001A97DB /* ManagedSettings.framework in Frameworks */,
+				B246B1612F2C5654001A97DB /* ManagedSettingsUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B294D0B02F228261002CDE1E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -26,13 +157,42 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C16F08ACB37C4311AE59A353 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B29D36242F315A5E00029996 /* ExtensionFoundation.framework in Frameworks */,
+				B29D36222F315A4F00029996 /* ExtensionKit.framework in Frameworks */,
+				6F6BD331A4494A79A134D670 /* FamilyControls.framework in Frameworks */,
+				E66BA498349747219632B1C1 /* DeviceActivity.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B246B13B2F296A48001A97DB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B29D36232F315A5E00029996 /* ExtensionFoundation.framework */,
+				B29D36212F315A4F00029996 /* ExtensionKit.framework */,
+				B246B1572F2BDE16001A97DB /* FamilyControls.framework */,
+				B246B13C2F296A48001A97DB /* DeviceActivity.framework */,
+				B246B15E2F2C5654001A97DB /* ManagedSettings.framework */,
+				B246B1602F2C5654001A97DB /* ManagedSettingsUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		B294D0AA2F228261002CDE1E = {
 			isa = PBXGroup;
 			children = (
+				B246B14B2F29715F001A97DB /* ContentView.swift */,
 				B294D0B52F228261002CDE1E /* SNSalert */,
+				B246B13E2F296A49001A97DB /* UsageMonitorExtension */,
+				B246B1622F2C5654001A97DB /* ShieldConfigExtension */,
+				6AC7437CC8AF4F22BC93074F /* UsageReportExtension */,
+				B246B13B2F296A48001A97DB /* Frameworks */,
 				B294D0B42F228261002CDE1E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +201,9 @@
 			isa = PBXGroup;
 			children = (
 				B294D0B32F228261002CDE1E /* SNSalert.app */,
+				B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */,
+				B246B15D2F2C5654001A97DB /* ShieldConfigExtension.appex */,
+				74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +211,72 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0F2C0C40A49043D1B9707CA9 /* UsageReportExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 769BBCCA98024CF5A671B8F2 /* Build configuration list for PBXNativeTarget "UsageReportExtension" */;
+			buildPhases = (
+				8A079E71C8D442AF9618B6DF /* Sources */,
+				C16F08ACB37C4311AE59A353 /* Frameworks */,
+				89A7A09C784341178457D8C5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6AC7437CC8AF4F22BC93074F /* UsageReportExtension */,
+			);
+			name = UsageReportExtension;
+			packageProductDependencies = (
+			);
+			productName = UsageReportExtension;
+			productReference = 74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B246B1392F296A48001A97DB /* UsageMonitorExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B246B1472F296A49001A97DB /* Build configuration list for PBXNativeTarget "UsageMonitorExtension" */;
+			buildPhases = (
+				B246B1362F296A48001A97DB /* Sources */,
+				B246B1372F296A48001A97DB /* Frameworks */,
+				B246B1382F296A48001A97DB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B246B13E2F296A49001A97DB /* UsageMonitorExtension */,
+			);
+			name = UsageMonitorExtension;
+			packageProductDependencies = (
+			);
+			productName = UsageMonitorExtension;
+			productReference = B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B246B15C2F2C5654001A97DB /* ShieldConfigExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B246B16B2F2C5654001A97DB /* Build configuration list for PBXNativeTarget "ShieldConfigExtension" */;
+			buildPhases = (
+				B246B1592F2C5654001A97DB /* Sources */,
+				B246B15A2F2C5654001A97DB /* Frameworks */,
+				B246B15B2F2C5654001A97DB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B246B1622F2C5654001A97DB /* ShieldConfigExtension */,
+			);
+			name = ShieldConfigExtension;
+			packageProductDependencies = (
+			);
+			productName = ShieldConfigExtension;
+			productReference = B246B15D2F2C5654001A97DB /* ShieldConfigExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B294D0B22F228261002CDE1E /* SNSalert */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B294D0BE2F228267002CDE1E /* Build configuration list for PBXNativeTarget "SNSalert" */;
@@ -55,10 +284,14 @@
 				B294D0AF2F228261002CDE1E /* Sources */,
 				B294D0B02F228261002CDE1E /* Frameworks */,
 				B294D0B12F228261002CDE1E /* Resources */,
+				B246B14A2F296A49001A97DB /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B246B1442F296A49001A97DB /* PBXTargetDependency */,
+				B246B1682F2C5654001A97DB /* PBXTargetDependency */,
+				C7C4A44A35384A25AB01CC4A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B294D0B52F228261002CDE1E /* SNSalert */,
@@ -76,10 +309,19 @@
 		B294D0AB2F228261002CDE1E /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				0F2C0C40A49043D1B9707CA9 = {
+					CreatedOnToolsVersion = 26.2;
+				};
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					B246B1392F296A48001A97DB = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					B246B15C2F2C5654001A97DB = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					B294D0B22F228261002CDE1E = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -100,11 +342,35 @@
 			projectRoot = "";
 			targets = (
 				B294D0B22F228261002CDE1E /* SNSalert */,
+				B246B1392F296A48001A97DB /* UsageMonitorExtension */,
+				B246B15C2F2C5654001A97DB /* ShieldConfigExtension */,
+				0F2C0C40A49043D1B9707CA9 /* UsageReportExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		89A7A09C784341178457D8C5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B246B1382F296A48001A97DB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B246B15B2F2C5654001A97DB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B294D0B12F228261002CDE1E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,16 +381,206 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B294D0AF2F228261002CDE1E /* Sources */ = {
+		8A079E71C8D442AF9618B6DF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B246B1362F296A48001A97DB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B246B1592F2C5654001A97DB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B294D0AF2F228261002CDE1E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B246B14C2F29715F001A97DB /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		B246B1442F296A49001A97DB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B246B1392F296A48001A97DB /* UsageMonitorExtension */;
+			targetProxy = B246B1432F296A49001A97DB /* PBXContainerItemProxy */;
+		};
+		B246B1682F2C5654001A97DB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B246B15C2F2C5654001A97DB /* ShieldConfigExtension */;
+			targetProxy = B246B1672F2C5654001A97DB /* PBXContainerItemProxy */;
+		};
+		C7C4A44A35384A25AB01CC4A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0F2C0C40A49043D1B9707CA9 /* UsageReportExtension */;
+			targetProxy = 9513E43522564534B362F344 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		015D29BD4B0D498381E26092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UsageReportExtension/UsageReportExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UsageReportExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UsageReportExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.UsageReportExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B246B1482F296A49001A97DB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UsageMonitorExtension/UsageMonitorExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UsageMonitorExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UsageMonitorExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.UsageMonitorExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B246B1492F296A49001A97DB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UsageMonitorExtension/UsageMonitorExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UsageMonitorExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UsageMonitorExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.UsageMonitorExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B246B16C2F2C5654001A97DB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShieldConfigExtension/ShieldConfigExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShieldConfigExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.ShieldConfigExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B246B16D2F2C5654001A97DB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShieldConfigExtension/ShieldConfigExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShieldConfigExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.ShieldConfigExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		B294D0BC2F228267002CDE1E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -249,15 +705,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SNSalert/SNSalert.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -265,6 +726,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -280,15 +742,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SNSalert/SNSalert.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -296,6 +763,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -306,9 +774,66 @@
 			};
 			name = Release;
 		};
+		CB1298740A99412D9C4FEE73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = UsageReportExtension/UsageReportExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2858U7LU96;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UsageReportExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UsageReportExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = xa504.SNSalert.UsageReportExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		769BBCCA98024CF5A671B8F2 /* Build configuration list for PBXNativeTarget "UsageReportExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CB1298740A99412D9C4FEE73 /* Debug */,
+				015D29BD4B0D498381E26092 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B246B1472F296A49001A97DB /* Build configuration list for PBXNativeTarget "UsageMonitorExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B246B1482F296A49001A97DB /* Debug */,
+				B246B1492F296A49001A97DB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B246B16B2F2C5654001A97DB /* Build configuration list for PBXNativeTarget "ShieldConfigExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B246B16C2F2C5654001A97DB /* Debug */,
+				B246B16D2F2C5654001A97DB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B294D0AE2F228261002CDE1E /* Build configuration list for PBXProject "SNSalert" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
