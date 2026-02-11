@@ -249,6 +249,24 @@ final class UsageSyncManager {
 }
 
 final class ContentViewModel: ObservableObject {
+    private enum UIErrorKind {
+        case permissionRequired
+        case monitorStartFailed
+
+        var message: String {
+            switch self {
+            case .permissionRequired:
+                return "Screen Timeの許可が必要です"
+            case .monitorStartFailed:
+                return "監視開始に失敗しました"
+            }
+        }
+    }
+
+    private enum UIErrorText {
+        static let syncFailed = "使用時間の同期に失敗しています"
+    }
+
     @Published var authorized = false
     @Published var selection = FamilyActivitySelection()
     let defaultLimitMinutes = 30
@@ -257,9 +275,11 @@ final class ContentViewModel: ObservableObject {
     @Published var resetMinute = 0
     @Published var isMonitoring = false
     @Published var setupCompleted = false
-    @Published var errorMessage: String? = nil
+    @Published private var uiError: UIErrorKind? = nil
     @Published var syncErrorMessage: String? = nil
     @Published var usageMinutes: [String: Int] = [:]
+    @Published var lastUsageSyncAt: Date? = nil
+    @Published var nextResetAt: Date = Date()
     @Published var blockedTokenKeys: Set<String> = []
     @Published var reportRefresh = Date()
     @Published var debugLogs: [String] = []
@@ -286,12 +306,15 @@ final class ContentViewModel: ObservableObject {
         isMonitoring = store.loadMonitoringEnabled()
         setupCompleted = store.loadSetupCompleted()
         usageMinutes = store.loadUsageMinutes()
+        lastUsageSyncAt = store.loadUsageUpdatedAt()
         blockedTokenKeys = Set(store.loadBlockedTokens().map { TokenKey.sortKey($0) })
         debugLogs = store.loadDebugLogs()
         if store.loadLastResetAt() == nil {
             store.saveLastResetAt(currentResetAnchor(now: Date()))
         }
         updateAuthorizationStatus()
+        refreshPermissionErrorState()
+        refreshNextResetAt(now: Date())
         if isMonitoring {
             syncWarmupUntil = Date().addingTimeInterval(syncStaleThresholdSeconds)
             syncManager.start()
@@ -300,11 +323,11 @@ final class ContentViewModel: ObservableObject {
 
     func startMonitoring() {
         Task {
-            errorMessage = nil
+            uiError = nil
             let ok = await ensureScreenTimeAuthorization()
             if !ok { return }
             if selection.applicationTokens.isEmpty {
-                errorMessage = "監視するアプリを選択してください"
+                uiError = .monitorStartFailed
                 return
             }
             ensureAppLimitsForSelection()
@@ -312,6 +335,7 @@ final class ContentViewModel: ObservableObject {
             store.saveAppLimits(appLimits)
             store.saveResetTime(hour: resetHour, minute: resetMinute)
             store.saveLastResetAt(currentResetAnchor(now: Date()))
+            refreshNextResetAt(now: Date())
 
             do {
                 appendDebugLog("監視開始を要求")
@@ -332,10 +356,11 @@ final class ContentViewModel: ObservableObject {
                 syncWarmupUntil = Date().addingTimeInterval(syncStaleThresholdSeconds)
                 wasSyncDelayed = false
                 appendDebugLog("監視開始に成功")
+                uiError = nil
                 syncManager.start()
             } catch {
                 appendDebugLog("監視開始に失敗")
-                errorMessage = "監視を開始できませんでした。再度お試しください"
+                uiError = .monitorStartFailed
             }
         }
     }
@@ -349,8 +374,10 @@ final class ContentViewModel: ObservableObject {
         syncWarmupUntil = nil
         wasSyncDelayed = false
         syncErrorMessage = nil
+        uiError = nil
         appendDebugLog("監視を停止")
         syncManager.stop()
+        refreshNextResetAt(now: Date())
     }
 
     func updateSelection(_ selection: FamilyActivitySelection) {
@@ -371,6 +398,7 @@ final class ContentViewModel: ObservableObject {
         resetHour = hour
         resetMinute = minute
         store.saveResetTime(hour: hour, minute: minute)
+        refreshNextResetAt(now: Date())
         resetIfNeeded(now: Date())
     }
 
@@ -424,6 +452,8 @@ final class ContentViewModel: ObservableObject {
         let latestUsage = store.loadUsageMinutes()
         let usageUpdatedAt = store.loadUsageUpdatedAt()
         let now = Date()
+        lastUsageSyncAt = usageUpdatedAt
+        refreshNextResetAt(now: now)
         let isUsageFresh = usageUpdatedAt.map { now.timeIntervalSince($0) <= syncStaleThresholdSeconds } ?? false
 
         if isUsageFresh {
@@ -437,7 +467,7 @@ final class ContentViewModel: ObservableObject {
         } else if let warmupUntil = syncWarmupUntil, now < warmupUntil {
             syncErrorMessage = nil
         } else {
-            syncErrorMessage = "使用時間の同期が遅れています"
+            syncErrorMessage = UIErrorText.syncFailed
             if !wasSyncDelayed {
                 appendDebugLog("同期遅延を検知")
                 wasSyncDelayed = true
@@ -492,6 +522,7 @@ final class ContentViewModel: ObservableObject {
         blockedTokenKeys = []
         screenTimeManager.clearBlocks()
         store.saveLastResetAt(anchor)
+        refreshNextResetAt(now: now)
         appendDebugLog("日次リセットを実行")
     }
 
@@ -516,9 +547,10 @@ final class ContentViewModel: ObservableObject {
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
         } catch {
-            errorMessage = "Screen Timeの許可に失敗しました"
+            uiError = .permissionRequired
         }
         updateAuthorizationStatus()
+        refreshPermissionErrorState()
         return authorized
     }
 
@@ -527,9 +559,60 @@ final class ContentViewModel: ObservableObject {
         authorized = (status == .approved)
     }
 
+    private func refreshPermissionErrorState() {
+        if !authorized {
+            uiError = .permissionRequired
+        } else if uiError == .permissionRequired {
+            uiError = nil
+        }
+    }
+
     private func appendDebugLog(_ message: String) {
         store.appendDebugLog(message)
         debugLogs = store.loadDebugLogs()
+    }
+
+    func monitoringStatusText() -> String {
+        isMonitoring ? "監視中" : "停止中"
+    }
+
+    func activeErrorMessage() -> String? {
+        if let uiError {
+            return uiError.message
+        }
+        return syncErrorMessage
+    }
+
+    func lastSyncDisplayText() -> String {
+        guard let syncedAt = lastUsageSyncAt else {
+            return "未同期"
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "MM/dd HH:mm:ss"
+        return formatter.string(from: syncedAt)
+    }
+
+    func nextResetDisplayText() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter.string(from: nextResetAt)
+    }
+
+    private func refreshNextResetAt(now: Date) {
+        let calendar = Calendar.current
+        let todayReset = calendar.date(
+            bySettingHour: resetHour,
+            minute: resetMinute,
+            second: 0,
+            of: now
+        ) ?? now
+        if now < todayReset {
+            nextResetAt = todayReset
+            return
+        }
+        nextResetAt = calendar.date(byAdding: .day, value: 1, to: todayReset) ?? todayReset
     }
 }
 
@@ -588,6 +671,30 @@ struct ContentView: View {
             Text("Screen Time許可: \(viewModel.authorized ? "OK" : "未")")
             Text("選択アプリ数: \(viewModel.selection.applicationTokens.count)")
             statusBadge
+            GroupBox("監視状態") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("状態")
+                        Spacer()
+                        Text(viewModel.monitoringStatusText())
+                            .foregroundColor(viewModel.isMonitoring ? .green : .secondary)
+                    }
+                    HStack {
+                        Text("最終同期")
+                        Spacer()
+                        Text(viewModel.lastSyncDisplayText())
+                            .foregroundColor(.secondary)
+                            .font(.footnote)
+                    }
+                    HStack {
+                        Text("次回リセット")
+                        Spacer()
+                        Text(viewModel.nextResetDisplayText())
+                            .foregroundColor(.secondary)
+                            .font(.footnote)
+                    }
+                }
+            }
             if !viewModel.selection.applicationTokens.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("選択アプリごとの上限")
@@ -688,7 +795,7 @@ struct ContentView: View {
             }
             .disabled(!viewModel.isMonitoring)
 
-            if let message = viewModel.errorMessage {
+            if let message = viewModel.activeErrorMessage() {
                 Text(message)
                     .foregroundColor(.red)
                     .font(.footnote)
@@ -716,6 +823,29 @@ struct SettingsSummaryView: View {
 
     var body: some View {
         List {
+            Section("状態") {
+                HStack {
+                    Text("監視")
+                    Spacer()
+                    Text(viewModel.monitoringStatusText())
+                        .foregroundColor(viewModel.isMonitoring ? .green : .secondary)
+                }
+                HStack {
+                    Text("最終同期")
+                    Spacer()
+                    Text(viewModel.lastSyncDisplayText())
+                        .foregroundColor(.secondary)
+                        .font(.footnote)
+                }
+                HStack {
+                    Text("次回リセット")
+                    Spacer()
+                    Text(viewModel.nextResetDisplayText())
+                        .foregroundColor(.secondary)
+                        .font(.footnote)
+                }
+            }
+
             Section("監視中") {
                 ForEach(tokenEntries, id: \.tokenKey) { entry in
                     NavigationLink {
@@ -745,8 +875,8 @@ struct SettingsSummaryView: View {
                 Text(String(format: "%02d:%02d", viewModel.resetHour, viewModel.resetMinute))
             }
 
-            if let message = viewModel.syncErrorMessage {
-                Section("同期") {
+            if let message = viewModel.activeErrorMessage() {
+                Section("注意") {
                     Text(message)
                         .foregroundColor(.red)
                 }

@@ -9,7 +9,18 @@ on:
       - main
 
 jobs:
+  logic-test:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Swift Package Tests
+        run: swift test --scratch-path .build/.swiftpm
+
   build:
+    needs: logic-test
     runs-on: macos-latest
 
     steps:

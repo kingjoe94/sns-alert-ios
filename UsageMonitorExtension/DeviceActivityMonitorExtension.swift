@@ -64,11 +64,12 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         let hour = defaults.integer(forKey: "resetHour")
         let minute = defaults.integer(forKey: "resetMinute")
         let now = Date()
-        let calendar = Calendar.current
-        let todayReset = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) ?? now
-        let anchor = now < todayReset
-            ? (calendar.date(byAdding: .day, value: -1, to: todayReset) ?? todayReset)
-            : todayReset
+        let anchor = MonitoringLogic.resetAnchor(
+            now: now,
+            resetHour: hour,
+            resetMinute: minute,
+            calendar: Calendar.current
+        )
         defaults.set(anchor, forKey: lastResetKey)
         appendDebugLog("intervalDidStart: resetAnchor=\(anchor)")
     }
@@ -130,8 +131,11 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
               let lastReset = defaults.object(forKey: lastResetKey) as? Date else {
             return false
         }
-        let delta = now.timeIntervalSince(lastReset)
-        return delta >= 0 && delta < resetGraceSeconds
+        return MonitoringLogic.isWithinResetGrace(
+            now: now,
+            lastReset: lastReset,
+            graceSeconds: resetGraceSeconds
+        )
     }
 
     private func shouldIgnoreByUsageSnapshot(token: Token<Application>, now: Date = Date()) -> Bool {
@@ -141,42 +145,48 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         guard let lastReset = defaults.object(forKey: lastResetKey) as? Date else {
             return false
         }
-        let elapsedFromReset = now.timeIntervalSince(lastReset)
+
         let usageUpdatedAt = defaults.object(forKey: usageUpdatedAtKey) as? Date
-        if usageUpdatedAt == nil || usageUpdatedAt!.timeIntervalSince(lastReset) < 30 {
-            // Immediately after reset, drop threshold events until usage sync catches up.
-            if elapsedFromReset >= 0 && elapsedFromReset < unsyncedThresholdIgnoreWindowSeconds {
-                appendDebugLog(
-                    "しきい値を使用量未同期で無視: elapsed=\(Int(elapsedFromReset))s",
-                    now: now
-                )
-                return true
-            }
-            return false
-        }
-        let syncedAt = usageUpdatedAt!
-        // Only use snapshot guard when we have post-reset usage data.
-        guard syncedAt.timeIntervalSince(lastReset) >= 30 else { return false }
-        guard let usageData = defaults.data(forKey: usageKey),
-              let usage = try? JSONDecoder().decode([String: Int].self, from: usageData) else {
-            return false
-        }
+
         let tokenKey = tokenSortKey(token)
-        let usedMinutes = usage[tokenKey] ?? 0
+        var usedMinutes: Int?
+        if let usageData = defaults.data(forKey: usageKey),
+           let usage = try? JSONDecoder().decode([String: Int].self, from: usageData) {
+            usedMinutes = usage[tokenKey] ?? 0
+        }
+
         var limitMinutes = defaultLimitMinutes
         if let limitsData = defaults.data(forKey: appLimitsKey),
            let limits = try? JSONDecoder().decode([String: Int].self, from: limitsData),
            let value = limits[tokenKey] {
             limitMinutes = value
         }
-        if usedMinutes < limitMinutes {
+
+        let ignoreReason = MonitoringLogic.usageThresholdIgnoreReason(
+            now: now,
+            lastReset: lastReset,
+            usageUpdatedAt: usageUpdatedAt,
+            usedMinutes: usedMinutes,
+            limitMinutes: limitMinutes,
+            unsyncedThresholdIgnoreWindowSeconds: unsyncedThresholdIgnoreWindowSeconds
+        )
+
+        switch ignoreReason {
+        case .usageNotSynced(let elapsedSeconds):
             appendDebugLog(
-                "しきい値を使用量突合で無視: used=\(usedMinutes), limit=\(limitMinutes), token=\(tokenKey)",
+                "しきい値を使用量未同期で無視: elapsed=\(elapsedSeconds)s",
                 now: now
             )
             return true
+        case .usageBelowLimit(let used, let limit):
+            appendDebugLog(
+                "しきい値を使用量突合で無視: used=\(used), limit=\(limit), token=\(tokenKey)",
+                now: now
+            )
+            return true
+        case .none:
+            return false
         }
-        return false
     }
 
     private func rearmMonitoringIfNeeded(reason: String, now: Date = Date()) {
@@ -249,9 +259,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     private func endComponentsForDailyReset(hour: Int, minute: Int) -> DateComponents {
-        let startTotal = hour * 60 + minute
-        let endTotal = (startTotal + 24 * 60 - 1) % (24 * 60)
-        return DateComponents(hour: endTotal / 60, minute: endTotal % 60)
+        MonitoringLogic.endComponentsForDailyReset(hour: hour, minute: minute)
     }
 
     private func appendDebugLog(_ message: String, now: Date = Date()) {

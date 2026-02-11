@@ -14,6 +14,40 @@ Run it before release and after any change to monitoring/reset logic.
   - App B: 1 min
 - Debug log UI visible (DEBUG build)
 
+## 0.5 Automated Unit Tests
+
+Run pure logic tests before device regression:
+
+```bash
+cd /Users/kinjoushizuma/dev/apr/SNSalert
+swift test
+```
+
+Expected:
+- All `MonitoringLogicTests` pass with 0 failures.
+
+## 0.6 Run Modes (10 min / 30 min)
+
+### Quick Smoke (about 10 min)
+
+Run this on every small change:
+
+1. `TC-01 Start monitoring`
+2. `TC-02 Per-app block (App A first)`
+3. `TC-04 Reset unlock`
+4. `TC-06 No-use false block check`
+
+Quick Smoke pass criteria:
+- All four test cases pass.
+- No immediate false block after reset.
+- No reset drift to next day while still blocked.
+
+### Full Regression (about 30 min)
+
+Run this before release or after monitoring/reset logic changes:
+
+- `TC-01` to `TC-10` all cases in order.
+
 ## 1. Core Flow (Start -> Block -> Reset -> Re-block)
 
 ### TC-01 Start monitoring
@@ -125,12 +159,76 @@ Steps:
 Expected:
 - Changes apply on next start.
 
+### TC-11 Error message: permission required
+
+Steps:
+1. Disable Screen Time permission for the app in iOS settings.
+2. Open app and tap `監視開始`.
+
+Expected:
+- Error text is exactly `Screen Timeの許可が必要です`.
+- Monitoring does not start.
+
+### TC-12 Error message: monitor start failure
+
+Steps:
+1. Keep Screen Time permission enabled.
+2. Clear selected apps (0 apps selected).
+3. Tap `監視開始`.
+
+Expected:
+- Error text is exactly `監視開始に失敗しました`.
+- Monitoring does not start.
+
+### TC-13 Error message: sync failure
+
+Steps:
+1. Start monitoring.
+2. Make usage sync fail (for example by temporarily denying required report access in debug setup).
+3. Wait for next sync tick.
+
+Expected:
+- Error text is exactly `使用時間の同期に失敗しています`.
+- Existing usage state is kept (no forced reset to zero).
+
 ## 4. Pass Criteria
 
 Release candidate is acceptable only if:
 
-- TC-01 to TC-10 all pass.
+- TC-01 to TC-13 all pass.
 - No reproduction of:
   - reset-time shift to next day while still blocked
   - post-reset permanent no-block state
   - immediate block without usage after reset
+
+## 5. Test Result Template
+
+Copy and fill this after each run:
+
+```text
+Run type: Quick Smoke / Full Regression
+Date: YYYY-MM-DD HH:mm
+Build: commit=<hash> / branch=<name>
+Device: <model> / iOS <version>
+Reset time setting: HH:mm
+
+TC-01: PASS/FAIL
+TC-02: PASS/FAIL
+TC-03: PASS/FAIL
+TC-04: PASS/FAIL
+TC-05: PASS/FAIL
+TC-06: PASS/FAIL
+TC-07: PASS/FAIL
+TC-08: PASS/FAIL
+TC-09: PASS/FAIL
+TC-10: PASS/FAIL
+TC-11: PASS/FAIL
+TC-12: PASS/FAIL
+TC-13: PASS/FAIL
+
+Notes:
+- <debug log summary>
+- <unexpected behavior if any>
+
+Result: PASS / FAIL
+```
