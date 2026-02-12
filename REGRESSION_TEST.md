@@ -232,3 +232,34 @@ Notes:
 
 Result: PASS / FAIL
 ```
+
+## 6. Latest Recorded Run
+
+```text
+Run type: Automated (CI + local unit tests)
+Date: 2026-02-13 03:58 JST
+Build: commit=2b1639b / branch=main
+Device: N/A (CI/local Mac)
+Reset time setting: N/A
+
+TC-01: MANUAL_PENDING
+TC-02: MANUAL_PENDING
+TC-03: MANUAL_PENDING
+TC-04: MANUAL_PENDING
+TC-05: MANUAL_PENDING
+TC-06: MANUAL_PENDING
+TC-07: MANUAL_PENDING
+TC-08: MANUAL_PENDING
+TC-09: MANUAL_PENDING
+TC-10: MANUAL_PENDING
+TC-11: MANUAL_PENDING
+TC-12: MANUAL_PENDING
+TC-13: MANUAL_PENDING
+
+Notes:
+- GitHub Actions: iOS Build Check #5 succeeded (logic-test, build)
+- Local unit tests: `swift test --scratch-path .build/.swiftpm` passed
+- Executed 9 tests, 0 failures
+
+Result: AUTOMATED_PASS / MANUAL_PENDING
+```
