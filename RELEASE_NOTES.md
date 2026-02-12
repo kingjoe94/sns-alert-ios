@@ -1,6 +1,6 @@
 # Release Notes
 
-## v0.1.0 (2026-02-13)
+## v0.1.1 (2026-02-13)
 
 ### Included
 - Stabilized monitoring/reset behavior across app and extensions.
