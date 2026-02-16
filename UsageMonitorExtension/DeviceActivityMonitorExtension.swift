@@ -27,6 +27,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         if isWithinResetGrace() {
             appendDebugLog("eventDidReachThresholdをgraceで無視: \(event.rawValue)")
+            rearmMonitoringIfNeeded(reason: "grace_\(event.rawValue)")
             return
         }
         let prefix = "limit_idx_"
@@ -38,7 +39,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             return
         }
         let token = tokens[index]
-        if shouldIgnoreByUsageSnapshot(token: token) {
+        if shouldIgnoreByUsageSnapshot(token: token, index: index) {
             rearmMonitoringIfNeeded(reason: event.rawValue)
             return
         }
@@ -55,12 +56,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     override func intervalDidStart(for activity: DeviceActivityName) {
-        store.shield.applications = nil
-        fallbackStore.shield.applications = nil
-        saveBlockedTokens([])
         guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
-        defaults.set(nil, forKey: usageKey)
-        defaults.removeObject(forKey: usageUpdatedAtKey)
         let hour = defaults.integer(forKey: "resetHour")
         let minute = defaults.integer(forKey: "resetMinute")
         let now = Date()
@@ -70,8 +66,20 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             resetMinute: minute,
             calendar: Calendar.current
         )
+        let lastReset = defaults.object(forKey: lastResetKey) as? Date
+        let shouldReset = (lastReset == nil) || (lastReset! < anchor)
+        guard shouldReset else {
+            appendDebugLog("intervalDidStart: resetスキップ(resetAnchor=\(anchor))")
+            return
+        }
+
+        store.shield.applications = nil
+        fallbackStore.shield.applications = nil
+        saveBlockedTokens([])
+        defaults.set(nil, forKey: usageKey)
+        defaults.removeObject(forKey: usageUpdatedAtKey)
         defaults.set(anchor, forKey: lastResetKey)
-        appendDebugLog("intervalDidStart: resetAnchor=\(anchor)")
+        appendDebugLog("intervalDidStart: reset実行(resetAnchor=\(anchor))")
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
@@ -138,7 +146,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         )
     }
 
-    private func shouldIgnoreByUsageSnapshot(token: Token<Application>, now: Date = Date()) -> Bool {
+    private func shouldIgnoreByUsageSnapshot(token: Token<Application>, index: Int, now: Date = Date()) -> Bool {
         guard let defaults = UserDefaults(suiteName: appGroupID) else {
             return false
         }
@@ -157,9 +165,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         var limitMinutes = defaultLimitMinutes
         if let limitsData = defaults.data(forKey: appLimitsKey),
-           let limits = try? JSONDecoder().decode([String: Int].self, from: limitsData),
-           let value = limits[tokenKey] {
-            limitMinutes = value
+           let limits = try? JSONDecoder().decode([String: Int].self, from: limitsData) {
+            limitMinutes = limitMinutesForToken(tokenKey: tokenKey, index: index, limits: limits)
         }
 
         let ignoreReason = MonitoringLogic.usageThresholdIgnoreReason(
@@ -216,7 +223,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         for (index, token) in tokens.enumerated() {
             let tokenKey = tokenSortKey(token)
-            let perLimit = limits[tokenKey] ?? defaultLimitMinutes
+            let perLimit = limitMinutesForToken(tokenKey: tokenKey, index: index, limits: limits)
             let name = DeviceActivityEvent.Name("limit_idx_\(index)")
             let event: DeviceActivityEvent
             if #available(iOS 17.4, *) {
@@ -251,6 +258,11 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             return [:]
         }
         return limits
+    }
+
+    private func limitMinutesForToken(tokenKey: String, index: Int, limits: [String: Int]) -> Int {
+        let idxKey = "idx_\(index)"
+        return limits[idxKey] ?? limits[tokenKey] ?? defaultLimitMinutes
     }
 
     private func saveOrderedTokens(_ tokens: [Token<Application>], defaults: UserDefaults) {

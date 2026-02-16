@@ -11,9 +11,23 @@ private let usageUpdatedAtKey = "usageUpdatedAt"
 private let resetHourKey = "resetHour"
 private let resetMinuteKey = "resetMinute"
 private let debugLogsKey = "debugLogs"
+private let debugForceSyncFailureKey = "debugForceSyncFailure"
 
 extension DeviceActivityReport.Context {
     static let daily = Self("daily")
+}
+
+private func appendReportDebugLog(_ message: String, now: Date = Date()) {
+    guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+    var logs = defaults.stringArray(forKey: debugLogsKey) ?? []
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ja_JP")
+    formatter.dateFormat = "HH:mm:ss"
+    logs.append("[\(formatter.string(from: now))] [ReportExt] \(message)")
+    if logs.count > 200 {
+        logs.removeFirst(logs.count - 200)
+    }
+    defaults.set(logs, forKey: debugLogsKey)
 }
 
 @MainActor
@@ -21,7 +35,9 @@ extension DeviceActivityReport.Context {
 struct UsageReportExtension: DeviceActivityReportExtension {
     typealias Configuration = ExtensionKit.AppExtensionSceneConfiguration
 
-    @MainActor init() {}
+    @MainActor init() {
+        appendReportDebugLog("extension初期化")
+    }
 
     @MainActor var configuration: Configuration {
         Configuration(UsageReportConfiguration())
@@ -42,6 +58,7 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
     }
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> String {
+        appendReportDebugLog("makeConfiguration開始")
         var usageSeconds: [String: TimeInterval] = [:]
         let resetInterval = currentResetInterval()
         for await day in data {
@@ -68,11 +85,18 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
             usageMinutes[key] = Int(seconds / 60)
         }
         let defaults = UserDefaults(suiteName: appGroupID)
+#if DEBUG
+        if defaults?.bool(forKey: debugForceSyncFailureKey) == true {
+            defaults?.removeObject(forKey: usageUpdatedAtKey)
+            appendReportDebugLog("DEBUG: 使用時間同期を失敗シミュレーション")
+            return ""
+        }
+#endif
         if let encoded = try? JSONEncoder().encode(usageMinutes) {
             defaults?.set(encoded, forKey: usageKey)
         }
         defaults?.set(Date(), forKey: usageUpdatedAtKey)
-        appendDebugLog("使用時間を同期: \(usageMinutes.count) apps")
+        appendReportDebugLog("使用時間を同期: \(usageMinutes.count) apps")
         return ""
     }
 
@@ -103,22 +127,11 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
         return end.timeIntervalSince(start)
     }
 
-    private func appendDebugLog(_ message: String, now: Date = Date()) {
-        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
-        var logs = defaults.stringArray(forKey: debugLogsKey) ?? []
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "HH:mm:ss"
-        logs.append("[\(formatter.string(from: now))] [ReportExt] \(message)")
-        if logs.count > 200 {
-            logs.removeFirst(logs.count - 200)
-        }
-        defaults.set(logs, forKey: debugLogsKey)
-    }
 }
 
 struct UsageReportView: View {
     var body: some View {
-        EmptyView()
+        Color.clear
+            .frame(width: 1, height: 1)
     }
 }

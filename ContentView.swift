@@ -35,6 +35,7 @@ final class AppStore {
     private let blockedTokensKey = "blockedTokens"
     private let orderedTokensKey = "orderedTokens"
     private let debugLogsKey = "debugLogs"
+    private let debugForceSyncFailureKey = "debugForceSyncFailure"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -159,6 +160,14 @@ final class AppStore {
     func clearDebugLogs() {
         defaults.removeObject(forKey: debugLogsKey)
     }
+
+    func loadDebugForceSyncFailure() -> Bool {
+        defaults.bool(forKey: debugForceSyncFailureKey)
+    }
+
+    func saveDebugForceSyncFailure(_ value: Bool) {
+        defaults.set(value, forKey: debugForceSyncFailureKey)
+    }
 }
 
 final class ScreenTimeManager {
@@ -181,7 +190,7 @@ final class ScreenTimeManager {
             .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
         for (idx, token) in tokens.enumerated() {
             let tokenKey = TokenKey.sortKey(token)
-            let perLimit = appLimits[tokenKey] ?? defaultLimit
+            let perLimit = appLimits[tokenKey] ?? appLimits["idx_\(idx)"] ?? defaultLimit
             let perEventName = DeviceActivityEvent.Name("limit_idx_\(idx)")
             let perEvent: DeviceActivityEvent
             if #available(iOS 17.4, *) {
@@ -283,17 +292,20 @@ final class ContentViewModel: ObservableObject {
     @Published var blockedTokenKeys: Set<String> = []
     @Published var reportRefresh = Date()
     @Published var debugLogs: [String] = []
+    @Published var debugForceSyncFailure = false
 
     private let store = AppStore()
     private let screenTimeManager = ScreenTimeManager()
     private let syncManager = UsageSyncManager()
     private let syncStaleThresholdSeconds: TimeInterval = 180
+    private let followupSyncDelaySeconds: TimeInterval = 2
     private var syncWarmupUntil: Date?
     private var wasSyncDelayed = false
+    private var followupSyncWorkItem: DispatchWorkItem?
 
     init() {
         syncManager.onTick = { [weak self] in
-            self?.syncUsage()
+            self?.syncUsage(reason: "syncTick")
         }
     }
 
@@ -309,6 +321,12 @@ final class ContentViewModel: ObservableObject {
         lastUsageSyncAt = store.loadUsageUpdatedAt()
         blockedTokenKeys = Set(store.loadBlockedTokens().map { TokenKey.sortKey($0) })
         debugLogs = store.loadDebugLogs()
+#if DEBUG
+        debugForceSyncFailure = store.loadDebugForceSyncFailure()
+#else
+        debugForceSyncFailure = false
+#endif
+        ensureAppLimitsForSelection()
         if store.loadLastResetAt() == nil {
             store.saveLastResetAt(currentResetAnchor(now: Date()))
         }
@@ -331,8 +349,10 @@ final class ContentViewModel: ObservableObject {
                 return
             }
             ensureAppLimitsForSelection()
+            let normalizedLimits = normalizedAppLimitsForSelection()
+            appLimits = normalizedLimits
             store.saveSelection(selection)
-            store.saveAppLimits(appLimits)
+            store.saveAppLimits(normalizedLimits)
             store.saveResetTime(hour: resetHour, minute: resetMinute)
             store.saveLastResetAt(currentResetAnchor(now: Date()))
             refreshNextResetAt(now: Date())
@@ -344,7 +364,7 @@ final class ContentViewModel: ObservableObject {
                 store.saveLastResetAt(currentResetAnchor(now: Date()))
                 try screenTimeManager.startMonitoring(
                     selection: selection,
-                    appLimits: appLimits,
+                    appLimits: normalizedLimits,
                     defaultLimit: defaultLimitMinutes,
                     resetHour: resetHour,
                     resetMinute: resetMinute
@@ -377,6 +397,8 @@ final class ContentViewModel: ObservableObject {
         uiError = nil
         appendDebugLog("監視を停止")
         syncManager.stop()
+        followupSyncWorkItem?.cancel()
+        followupSyncWorkItem = nil
         refreshNextResetAt(now: Date())
     }
 
@@ -390,6 +412,9 @@ final class ContentViewModel: ObservableObject {
     func updateAppLimit(tokenKey: String, value: Int) {
         guard !isMonitoring else { return }
         appLimits[tokenKey] = value
+        if let index = indexForTokenKey(tokenKey) {
+            appLimits[limitIndexKey(index)] = value
+        }
         store.saveAppLimits(appLimits)
     }
 
@@ -404,8 +429,19 @@ final class ContentViewModel: ObservableObject {
 
     func remainingMinutes(for tokenKey: String) -> Int {
         let used = usageMinutes[tokenKey] ?? 0
-        let limit = appLimits[tokenKey] ?? defaultLimitMinutes
+        let limit = limitMinutes(for: tokenKey)
         return max(limit - used, 0)
+    }
+
+    func limitMinutes(for tokenKey: String) -> Int {
+        if let value = appLimits[tokenKey] {
+            return value
+        }
+        if let index = indexForTokenKey(tokenKey),
+           let indexed = appLimits[limitIndexKey(index)] {
+            return indexed
+        }
+        return defaultLimitMinutes
     }
 
     func formatRemaining(_ minutes: Int) -> String {
@@ -446,7 +482,18 @@ final class ContentViewModel: ObservableObject {
         debugLogs = []
     }
 
-    private func syncUsage() {
+    func debugToggleSyncFailure() {
+        debugForceSyncFailure.toggle()
+        store.saveDebugForceSyncFailure(debugForceSyncFailure)
+        appendDebugLog("DEBUG: 同期失敗トグル \(debugForceSyncFailure ? "ON" : "OFF")")
+    }
+
+    func handleAppBecameActive() {
+        guard isMonitoring else { return }
+        syncUsage(reason: "appActive")
+    }
+
+    private func syncUsage(reason: String, triggerReportRefresh: Bool = true) {
         resetIfNeeded(now: Date())
         var blockedTokens = store.loadBlockedTokens()
         let latestUsage = store.loadUsageMinutes()
@@ -454,9 +501,20 @@ final class ContentViewModel: ObservableObject {
         let now = Date()
         lastUsageSyncAt = usageUpdatedAt
         refreshNextResetAt(now: now)
+#if DEBUG
+        let forceSyncFailure = debugForceSyncFailure
+#else
+        let forceSyncFailure = false
+#endif
         let isUsageFresh = usageUpdatedAt.map { now.timeIntervalSince($0) <= syncStaleThresholdSeconds } ?? false
 
-        if isUsageFresh {
+        if forceSyncFailure {
+            syncErrorMessage = UIErrorText.syncFailed
+            if !wasSyncDelayed {
+                appendDebugLog("同期遅延を検知")
+                wasSyncDelayed = true
+            }
+        } else if isUsageFresh {
             usageMinutes = latestUsage
             syncWarmupUntil = nil
             syncErrorMessage = nil
@@ -474,6 +532,18 @@ final class ContentViewModel: ObservableObject {
             }
         }
 
+        // Sync error state: keep current block state as-is and skip usage-based reconciliation.
+        if syncErrorMessage != nil {
+            blockedTokenKeys = Set(blockedTokens.map { TokenKey.sortKey($0) })
+            screenTimeManager.applyBlocks(blockedTokens)
+            debugLogs = store.loadDebugLogs()
+            if triggerReportRefresh {
+                requestUsageReportRefresh(reason: "syncError")
+                scheduleFollowupSync(baseReason: reason)
+            }
+            return
+        }
+
         // Rebuild block state from persisted usage so restart/extension timing cannot miss limits.
         let selectedTokens = Array(selection.applicationTokens)
             .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
@@ -481,7 +551,7 @@ final class ContentViewModel: ObservableObject {
         for token in selectedTokens {
             let key = TokenKey.sortKey(token)
             let used = usageMinutes[key] ?? 0
-            let limit = appLimits[key] ?? defaultLimitMinutes
+            let limit = limitMinutes(for: key)
             if used >= limit && !blockedKeys.contains(key) {
                 blockedTokens.append(token)
                 blockedKeys.insert(key)
@@ -492,7 +562,10 @@ final class ContentViewModel: ObservableObject {
         blockedTokenKeys = blockedKeys
         screenTimeManager.applyBlocks(blockedTokens)
         debugLogs = store.loadDebugLogs()
-        reportRefresh = Date()
+        if triggerReportRefresh {
+            requestUsageReportRefresh(reason: reason)
+            scheduleFollowupSync(baseReason: reason)
+        }
     }
 
     private func currentResetAnchor(now: Date) -> Date {
@@ -506,9 +579,9 @@ final class ContentViewModel: ObservableObject {
 
     func currentReportInterval(now: Date = Date()) -> DateInterval {
         let anchor = currentResetAnchor(now: now)
-        let startOfDay = Calendar.current.startOfDay(for: anchor)
-        let end = Calendar.current.date(byAdding: .day, value: 2, to: startOfDay) ?? now
-        return DateInterval(start: startOfDay, end: end)
+        let minEnd = anchor.addingTimeInterval(60)
+        let end = (now < minEnd) ? minEnd : now
+        return DateInterval(start: anchor, end: end)
     }
 
     private func resetIfNeeded(now: Date) {
@@ -528,19 +601,35 @@ final class ContentViewModel: ObservableObject {
 
 
     private func ensureAppLimitsForSelection() {
-        var updated = appLimits
-        let tokens = Array(selection.applicationTokens)
-            .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
-        for token in tokens {
-            let key = TokenKey.sortKey(token)
-            if updated[key] == nil {
-                updated[key] = defaultLimitMinutes
-            }
-        }
+        let updated = normalizedAppLimitsForSelection()
         if updated != appLimits {
             appLimits = updated
             store.saveAppLimits(updated)
         }
+    }
+
+    private func normalizedAppLimitsForSelection() -> [String: Int] {
+        var normalized = appLimits
+        let tokens = Array(selection.applicationTokens)
+            .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
+        for (index, token) in tokens.enumerated() {
+            let tokenKey = TokenKey.sortKey(token)
+            let idxKey = limitIndexKey(index)
+            let value = normalized[tokenKey] ?? normalized[idxKey] ?? defaultLimitMinutes
+            normalized[tokenKey] = value
+            normalized[idxKey] = value
+        }
+        return normalized
+    }
+
+    private func limitIndexKey(_ index: Int) -> String {
+        "idx_\(index)"
+    }
+
+    private func indexForTokenKey(_ tokenKey: String) -> Int? {
+        let tokens = Array(selection.applicationTokens)
+            .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
+        return tokens.firstIndex { TokenKey.sortKey($0) == tokenKey }
     }
 
     private func ensureScreenTimeAuthorization() async -> Bool {
@@ -560,6 +649,13 @@ final class ContentViewModel: ObservableObject {
     }
 
     private func refreshPermissionErrorState() {
+        // Monitoring is already active; avoid false-positive permission error display.
+        if isMonitoring {
+            if uiError == .permissionRequired {
+                uiError = nil
+            }
+            return
+        }
         if !authorized {
             uiError = .permissionRequired
         } else if uiError == .permissionRequired {
@@ -614,10 +710,46 @@ final class ContentViewModel: ObservableObject {
         }
         nextResetAt = calendar.date(byAdding: .day, value: 1, to: todayReset) ?? todayReset
     }
+
+    private func requestUsageReportRefresh(reason: String) {
+        reportRefresh = Date()
+        appendDebugLog("使用時間同期を要求: \(reason)")
+    }
+
+    private func scheduleFollowupSync(baseReason: String) {
+        followupSyncWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.syncUsage(reason: "\(baseReason)_followup", triggerReportRefresh: false)
+        }
+        followupSyncWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + followupSyncDelaySeconds, execute: workItem)
+    }
+}
+
+private struct UsageReportHostView: View {
+    let interval: DateInterval
+    let refreshToken: Date
+
+    var body: some View {
+        DeviceActivityReport(
+            .daily,
+            filter: DeviceActivityFilter(
+                segment: .daily(during: interval),
+                users: .all,
+                devices: .init([.iPhone, .iPad])
+            )
+        )
+        .id(refreshToken)
+        .frame(width: 2, height: 2)
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
 }
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showPicker = false
     @State private var showEdit = false
     @State private var editingTokenKey: String? = nil
@@ -625,32 +757,27 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.setupCompleted && viewModel.isMonitoring && !showEdit {
-                    SettingsSummaryView(
-                        viewModel: viewModel,
-                        onEdit: {
-                            showEdit = true
-                        }
-                    )
-                } else {
-                    setupView
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if viewModel.setupCompleted && viewModel.isMonitoring && !showEdit {
+                        SettingsSummaryView(
+                            viewModel: viewModel,
+                            onEdit: {
+                                showEdit = true
+                            }
+                        )
+                    } else {
+                        setupView
+                    }
                 }
+                UsageReportHostView(
+                    interval: viewModel.currentReportInterval(),
+                    refreshToken: viewModel.reportRefresh
+                )
+                .padding(.top, 1)
+                .padding(.leading, 1)
             }
             .navigationTitle("SNSアラート")
-            .background(
-                DeviceActivityReport(
-                    .daily,
-                    filter: DeviceActivityFilter(
-                        segment: .daily(during: viewModel.currentReportInterval()),
-                        users: .all,
-                        devices: .init([.iPhone, .iPad])
-                    )
-                )
-                .id(viewModel.reportRefresh)
-                .frame(height: 0)
-                .opacity(0.001)
-            )
         }
         .onAppear {
             viewModel.load()
@@ -658,6 +785,11 @@ struct ContentView: View {
         .onChange(of: viewModel.isMonitoring) { isMonitoring in
             if isMonitoring {
                 showEdit = false
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                viewModel.handleAppBecameActive()
             }
         }
         .familyActivityPicker(isPresented: $showPicker, selection: Binding(
@@ -707,7 +839,7 @@ struct ContentView: View {
                     ForEach(tokenEntries, id: \.tokenKey) { entry in
                         let index = entry.index
                         let tokenKey = entry.tokenKey
-                        let currentLimit = viewModel.appLimits[tokenKey] ?? viewModel.defaultLimitMinutes
+                        let currentLimit = viewModel.limitMinutes(for: tokenKey)
                         let isEditing = editingTokenKey == tokenKey
                         VStack(alignment: .leading, spacing: 8) {
                             Text("アプリ \(index + 1)")
@@ -851,7 +983,7 @@ struct SettingsSummaryView: View {
                     NavigationLink {
                         AppDetailView(
                             title: "アプリ \(entry.index + 1)",
-                            limitMinutes: viewModel.appLimits[entry.tokenKey] ?? viewModel.defaultLimitMinutes,
+                            limitMinutes: viewModel.limitMinutes(for: entry.tokenKey),
                             remainingMinutes: viewModel.remainingMinutes(for: entry.tokenKey),
                             isBlocked: viewModel.isBlocked(tokenKey: entry.tokenKey)
                         )
@@ -861,7 +993,7 @@ struct SettingsSummaryView: View {
                                 .foregroundColor(viewModel.isBlocked(tokenKey: entry.tokenKey) ? .red : .green)
                             VStack(alignment: .leading) {
                                 Text("アプリ \(entry.index + 1)")
-                                Text("上限: \(viewModel.appLimits[entry.tokenKey] ?? viewModel.defaultLimitMinutes)分")
+                                Text("上限: \(viewModel.limitMinutes(for: entry.tokenKey))分")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -904,6 +1036,9 @@ struct SettingsSummaryView: View {
                 }
                 Button("即ブロック/解除トグル") {
                     viewModel.debugToggleBlock()
+                }
+                Button(viewModel.debugForceSyncFailure ? "同期失敗シミュレーション: ON" : "同期失敗シミュレーション: OFF") {
+                    viewModel.debugToggleSyncFailure()
                 }
                 Button("デバッグログをクリア") {
                     viewModel.clearDebugLogs()

@@ -47,7 +47,7 @@ enum MonitoringLogic {
         usageUpdatedAt: Date?,
         usedMinutes: Int?,
         limitMinutes: Int,
-        unsyncedThresholdIgnoreWindowSeconds: TimeInterval,
+        unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 180,
         minSyncedUsageDelaySeconds: TimeInterval = 30
     ) -> UsageThresholdIgnoreReason {
         guard let lastReset else { return .none }
@@ -55,6 +55,7 @@ enum MonitoringLogic {
         let elapsedFromReset = now.timeIntervalSince(lastReset)
         let syncedDelay = usageUpdatedAt?.timeIntervalSince(lastReset)
 
+        // Ignore brief post-reset races, then fall back to threshold-only behavior.
         if syncedDelay == nil || syncedDelay! < minSyncedUsageDelaySeconds {
             if elapsedFromReset >= 0 && elapsedFromReset < unsyncedThresholdIgnoreWindowSeconds {
                 return .usageNotSynced(elapsedSeconds: Int(elapsedFromReset))

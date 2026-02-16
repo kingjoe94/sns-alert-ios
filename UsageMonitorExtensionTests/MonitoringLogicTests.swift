@@ -78,8 +78,7 @@ final class MonitoringLogicTests: XCTestCase {
             lastReset: reset,
             usageUpdatedAt: nil,
             usedMinutes: nil,
-            limitMinutes: 1,
-            unsyncedThresholdIgnoreWindowSeconds: 180
+            limitMinutes: 1
         )
 
         XCTAssertEqual(reason, .usageNotSynced(elapsedSeconds: 120))
@@ -95,8 +94,7 @@ final class MonitoringLogicTests: XCTestCase {
             lastReset: reset,
             usageUpdatedAt: nil,
             usedMinutes: nil,
-            limitMinutes: 1,
-            unsyncedThresholdIgnoreWindowSeconds: 180
+            limitMinutes: 1
         )
 
         XCTAssertEqual(reason, .none)
@@ -105,7 +103,7 @@ final class MonitoringLogicTests: XCTestCase {
     func testUsageThresholdIgnoreReasonIgnoresWhenUsageIsBelowLimitAfterSync() {
         let calendar = fixedCalendar()
         let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
-        let now = reset.addingTimeInterval(300)
+        let now = reset.addingTimeInterval(120)
         let syncedAt = reset.addingTimeInterval(31)
 
         let reason = MonitoringLogic.usageThresholdIgnoreReason(
@@ -113,8 +111,7 @@ final class MonitoringLogicTests: XCTestCase {
             lastReset: reset,
             usageUpdatedAt: syncedAt,
             usedMinutes: 1,
-            limitMinutes: 2,
-            unsyncedThresholdIgnoreWindowSeconds: 180
+            limitMinutes: 2
         )
 
         XCTAssertEqual(reason, .usageBelowLimit(usedMinutes: 1, limitMinutes: 2))
@@ -123,7 +120,7 @@ final class MonitoringLogicTests: XCTestCase {
     func testUsageThresholdIgnoreReasonDoesNotIgnoreWhenUsageReachedLimit() {
         let calendar = fixedCalendar()
         let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
-        let now = reset.addingTimeInterval(300)
+        let now = reset.addingTimeInterval(120)
         let syncedAt = reset.addingTimeInterval(31)
 
         let reason = MonitoringLogic.usageThresholdIgnoreReason(
@@ -131,8 +128,7 @@ final class MonitoringLogicTests: XCTestCase {
             lastReset: reset,
             usageUpdatedAt: syncedAt,
             usedMinutes: 2,
-            limitMinutes: 2,
-            unsyncedThresholdIgnoreWindowSeconds: 180
+            limitMinutes: 2
         )
 
         XCTAssertEqual(reason, .none)
@@ -141,7 +137,7 @@ final class MonitoringLogicTests: XCTestCase {
     func testUsageThresholdIgnoreReasonDoesNotIgnoreWithoutUsageSnapshotAfterSync() {
         let calendar = fixedCalendar()
         let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
-        let now = reset.addingTimeInterval(300)
+        let now = reset.addingTimeInterval(120)
         let syncedAt = reset.addingTimeInterval(31)
 
         let reason = MonitoringLogic.usageThresholdIgnoreReason(
@@ -149,8 +145,7 @@ final class MonitoringLogicTests: XCTestCase {
             lastReset: reset,
             usageUpdatedAt: syncedAt,
             usedMinutes: nil,
-            limitMinutes: 2,
-            unsyncedThresholdIgnoreWindowSeconds: 180
+            limitMinutes: 2
         )
 
         XCTAssertEqual(reason, .none)

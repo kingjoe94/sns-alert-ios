@@ -184,12 +184,13 @@ Expected:
 
 Steps:
 1. Start monitoring.
-2. Make usage sync fail (for example by temporarily denying required report access in debug setup).
+2. Turn on `同期失敗シミュレーション: ON` in DEBUG section.
 3. Wait for next sync tick.
 
 Expected:
 - Error text is exactly `使用時間の同期に失敗しています`.
 - Existing usage state is kept (no forced reset to zero).
+- Existing block state is kept; no forced unblock is performed only by sync error text.
 
 ## 4. Pass Criteria
 
@@ -237,8 +238,8 @@ Result: PASS / FAIL
 
 ```text
 Run type: Automated (CI + local unit tests)
-Date: 2026-02-13 03:58 JST
-Build: commit=2b1639b / branch=main
+Date: 2026-02-13 07:22 JST
+Build: commit=2af8f6b / branch=main
 Device: N/A (CI/local Mac)
 Reset time setting: N/A
 
@@ -257,9 +258,40 @@ TC-12: MANUAL_PENDING
 TC-13: MANUAL_PENDING
 
 Notes:
-- GitHub Actions: iOS Build Check #5 succeeded (logic-test, build)
+- GitHub Actions: latest successful run remained iOS Build Check #5 (logic-test, build)
 - Local unit tests: `swift test --scratch-path .build/.swiftpm` passed
 - Executed 9 tests, 0 failures
 
 Result: AUTOMATED_PASS / MANUAL_PENDING
+```
+
+## 7. Latest Recorded Device Run (Focused Scope)
+
+```text
+Run type: Focused Manual (threshold/rearm verification)
+Date: 2026-02-16
+Build: working tree (unreleased) / branch=main
+Device: iPhone (real device) / iOS version not recorded
+Reset time setting: 06:16
+
+TC-01: PASS
+TC-02: PASS (limit=2min)
+TC-03: NOT_RUN
+TC-04: PASS
+TC-05: PASS (limit=4min after reset)
+TC-06: NOT_RUN
+TC-07: NOT_RUN
+TC-08: NOT_RUN
+TC-09: NOT_RUN
+TC-10: NOT_RUN
+TC-11: NOT_RUN
+TC-12: NOT_RUN
+TC-13: NOT_RUN
+
+Notes:
+- Prior symptom ("limit reached but no block after reset") was observed before this fix.
+- User report confirmed block at 2-minute limit and 4-minute limit.
+- After reset, 4-minute limit also blocked again as expected.
+
+Result: PASS (focused scope only)
 ```

@@ -1,5 +1,19 @@
 # Release Notes
 
+## v0.1.2 (2026-02-16)
+
+### Included
+- Fixed post-reset no-block regression by normalizing per-app limit keys (`tokenKey` and `idx_<index>`) across app and monitor extension.
+- Changed unsynced threshold-ignore behavior to a bounded grace window so threshold checks recover after the window ends.
+- Restricted sync-failure simulation branches to `#if DEBUG` paths only.
+
+### Validation Snapshot
+- Local `swift test --scratch-path .build/.swiftpm`: pass (9 tests, 0 failures).
+- Real-device focused verification: block triggered at 2-minute and 4-minute limits, and re-block after reset also passed.
+
+### Remaining Validation
+- Full manual regression (`TC-01` to `TC-13`) is still required before release.
+
 ## v0.1.1 (2026-02-13)
 
 ### Included
@@ -16,3 +30,10 @@
 
 ### Remaining Validation
 - Real-device manual regression (`TC-01` to `TC-13`) should be executed per `REGRESSION_TEST.md`.
+
+## Operational Update (2026-02-13)
+
+### Included
+- Added `AGENTS.md` as the repository operation policy for Codex-driven development.
+- Defined fixed workflow, implementation constraints, test policy, and reporting format.
+- Added mobile release gates (iOS-first, Android-future) and security/privacy baseline.
