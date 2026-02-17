@@ -46,7 +46,7 @@ Quick Smoke pass criteria:
 
 Run this before release or after monitoring/reset logic changes:
 
-- `TC-01` to `TC-10` all cases in order.
+- `TC-01` to `TC-16` all cases in order.
 
 ## 1. Core Flow (Start -> Block -> Reset -> Re-block)
 
@@ -137,6 +137,7 @@ Steps:
 Expected:
 - Usage is not reset by stop/start alone.
 - Block timing resumes from remaining time.
+- `監視開始`直後（最初の10秒程度）に即ブロックされない。
 
 ## 3. UI Rule Check
 
@@ -192,11 +193,53 @@ Expected:
 - Existing usage state is kept (no forced reset to zero).
 - Existing block state is kept; no forced unblock is performed only by sync error text.
 
+### TC-14 Remaining time display updates
+
+Steps:
+1. Set App A limit to 5 minutes and start monitoring.
+2. Open App A detail view and confirm initial remaining time.
+3. Use App A for 1-2 minutes.
+4. Return to detail view and confirm remaining time.
+5. Put app in background for about 1 minute.
+6. Return to foreground and confirm remaining time again.
+
+Expected:
+- Initial remaining time is shown as limit-based value.
+- After usage, remaining time decreases.
+- After background -> foreground, remaining time reflects latest usage.
+- Display format is always `X時間Y分`.
+
+### TC-15 Remaining time display after reset
+
+Steps:
+1. Set reset time to 1-2 minutes in the future.
+2. Consume App A until remaining time reaches 0 and block is applied.
+3. Wait until reset time passes.
+4. Open App A detail view and check remaining time.
+
+Expected:
+- After reset, remaining time returns to configured limit value.
+- Display updates without requiring app restart.
+
+### TC-16 Stop during day, resume after reset boundary
+
+Steps:
+1. Set reset time to 1-2 minutes in the future.
+2. Start monitoring and consume App A close to limit (or block App A once).
+3. Tap `停止` before/after the reset boundary and keep monitoring off.
+4. Wait until reset time passes.
+5. Tap `監視開始` and open App A detail view immediately.
+
+Expected:
+- If reset boundary was passed while stopped, usage is reset on next start.
+- No immediate block occurs right after `監視開始`.
+- Remaining time starts from configured limit value.
+
 ## 4. Pass Criteria
 
 Release candidate is acceptable only if:
 
-- TC-01 to TC-13 all pass.
+- TC-01 to TC-16 all pass.
 - No reproduction of:
   - reset-time shift to next day while still blocked
   - post-reset permanent no-block state
@@ -226,6 +269,9 @@ TC-10: PASS/FAIL
 TC-11: PASS/FAIL
 TC-12: PASS/FAIL
 TC-13: PASS/FAIL
+TC-14: PASS/FAIL
+TC-15: PASS/FAIL
+TC-16: PASS/FAIL
 
 Notes:
 - <debug log summary>
@@ -256,6 +302,8 @@ TC-10: MANUAL_PENDING
 TC-11: MANUAL_PENDING
 TC-12: MANUAL_PENDING
 TC-13: MANUAL_PENDING
+TC-14: MANUAL_PENDING
+TC-15: MANUAL_PENDING
 
 Notes:
 - GitHub Actions: latest successful run remained iOS Build Check #5 (logic-test, build)
@@ -287,11 +335,34 @@ TC-10: NOT_RUN
 TC-11: NOT_RUN
 TC-12: NOT_RUN
 TC-13: NOT_RUN
+TC-14: NOT_RUN
+TC-15: NOT_RUN
 
 Notes:
 - Prior symptom ("limit reached but no block after reset") was observed before this fix.
 - User report confirmed block at 2-minute limit and 4-minute limit.
 - After reset, 4-minute limit also blocked again as expected.
+
+Result: PASS (focused scope only)
+```
+
+## 8. Latest Recorded Device Run (Remaining-Time + Resume)
+
+```text
+Run type: Focused Manual (remaining-time and resume)
+Date: 2026-02-17
+Build: working tree (unreleased) / branch=main
+Device: iPhone (real device) / iOS version not recorded
+Reset time setting: test-time dependent
+
+TC-14: PASS
+TC-15: PASS
+TC-16: PASS
+
+Notes:
+- Immediate block on monitoring start no longer reproduced.
+- Remaining time now decreases during usage.
+- After crossing reset boundary while stopped, remaining time resets on next start (expected behavior).
 
 Result: PASS (focused scope only)
 ```
