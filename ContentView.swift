@@ -31,6 +31,8 @@ final class AppStore {
     private let setupCompletedKey = "setupCompleted"
     private let usageKey = "usageMinutes"
     private let usageUpdatedAtKey = "usageUpdatedAt"
+    private let usageEventAcceptedAtKey = "usageEventAcceptedAt"
+    private let reportLastRunAtKey = "reportLastRunAt"
     private let lastResetKey = "lastResetAt"
     private let blockedTokensKey = "blockedTokens"
     private let orderedTokensKey = "orderedTokens"
@@ -107,8 +109,16 @@ final class AppStore {
         }
     }
 
+    func clearUsageEventAcceptedAt() {
+        defaults.removeObject(forKey: usageEventAcceptedAtKey)
+    }
+
     func loadUsageUpdatedAt() -> Date? {
         return defaults.object(forKey: usageUpdatedAtKey) as? Date
+    }
+
+    func loadReportLastRunAt() -> Date? {
+        return defaults.object(forKey: reportLastRunAtKey) as? Date
     }
 
     func loadLastResetAt() -> Date? {
@@ -174,6 +184,7 @@ final class ScreenTimeManager {
     private let center = DeviceActivityCenter()
     private let store = ManagedSettingsStore(named: managedStoreName)
     private let fallbackStore = ManagedSettingsStore()
+    private let lastRearmAtKey = "lastRearmAt"
 
     func startMonitoring(selection: FamilyActivitySelection, appLimits: [String: Int], defaultLimit: Int, resetHour: Int, resetMinute: Int) throws {
         center.stopMonitoring([DeviceActivityName("daily-monitor")])
@@ -188,6 +199,7 @@ final class ScreenTimeManager {
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         let tokens = Array(selection.applicationTokens)
             .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
+        let persistedUsage = AppStore().loadUsageMinutes()
         for (idx, token) in tokens.enumerated() {
             let tokenKey = TokenKey.sortKey(token)
             let perLimit = appLimits[tokenKey] ?? appLimits["idx_\(idx)"] ?? defaultLimit
@@ -197,7 +209,8 @@ final class ScreenTimeManager {
                 perEvent = DeviceActivityEvent(
                     applications: Set([token]),
                     threshold: DateComponents(minute: perLimit),
-                    includesPastActivity: false
+                    // Keep same-day usage when monitor is restarted.
+                    includesPastActivity: true
                 )
             } else {
                 perEvent = DeviceActivityEvent(
@@ -206,8 +219,31 @@ final class ScreenTimeManager {
                 )
             }
             events[perEventName] = perEvent
+
+            // Fallback path when ReportExt is unavailable:
+            // keep a per-minute threshold event so MonitorExt can persist usage minutes.
+            let usedMinutes = persistedUsage["idx_\(idx)"] ?? persistedUsage[tokenKey] ?? 0
+            if usedMinutes < perLimit {
+                let usageEventName = DeviceActivityEvent.Name("usage_idx_\(idx)")
+                let usageEvent: DeviceActivityEvent
+                if #available(iOS 17.4, *) {
+                    usageEvent = DeviceActivityEvent(
+                        applications: Set([token]),
+                        threshold: DateComponents(minute: 1),
+                        // Count only newly-added usage after monitor registration.
+                        includesPastActivity: false
+                    )
+                } else {
+                    usageEvent = DeviceActivityEvent(
+                        applications: Set([token]),
+                        threshold: DateComponents(minute: 1)
+                    )
+                }
+                events[usageEventName] = usageEvent
+            }
         }
         AppStore().saveOrderedTokens(tokens)
+        UserDefaults(suiteName: appGroupID)?.set(Date(), forKey: lastRearmAtKey)
 
         try center.startMonitoring(DeviceActivityName("daily-monitor"), during: schedule, events: events)
     }
@@ -291,6 +327,10 @@ final class ContentViewModel: ObservableObject {
     @Published var nextResetAt: Date = Date()
     @Published var blockedTokenKeys: Set<String> = []
     @Published var reportRefresh = Date()
+    @Published var reportInterval = DateInterval(
+        start: Date().addingTimeInterval(-60),
+        end: Date()
+    )
     @Published var debugLogs: [String] = []
     @Published var debugForceSyncFailure = false
 
@@ -301,6 +341,7 @@ final class ContentViewModel: ObservableObject {
     private let followupSyncDelaySeconds: TimeInterval = 2
     private var syncWarmupUntil: Date?
     private var wasSyncDelayed = false
+    private var didLogMissingReportRun = false
     private var followupSyncWorkItem: DispatchWorkItem?
 
     init() {
@@ -332,7 +373,9 @@ final class ContentViewModel: ObservableObject {
         }
         updateAuthorizationStatus()
         refreshPermissionErrorState()
-        refreshNextResetAt(now: Date())
+        let now = Date()
+        refreshNextResetAt(now: now)
+        refreshReportInterval(now: now)
         if isMonitoring {
             syncWarmupUntil = Date().addingTimeInterval(syncStaleThresholdSeconds)
             syncManager.start()
@@ -351,17 +394,27 @@ final class ContentViewModel: ObservableObject {
             ensureAppLimitsForSelection()
             let normalizedLimits = normalizedAppLimitsForSelection()
             appLimits = normalizedLimits
+            let now = Date()
+            let anchor = currentResetAnchor(now: now)
+            if let lastReset = store.loadLastResetAt(),
+               isResetTimeDrifted(lastReset: lastReset) {
+                resetStateForResetTimeChange(now: now, lastReset: lastReset, newAnchor: anchor)
+            }
             store.saveSelection(selection)
             store.saveAppLimits(normalizedLimits)
             store.saveResetTime(hour: resetHour, minute: resetMinute)
-            store.saveLastResetAt(currentResetAnchor(now: Date()))
-            refreshNextResetAt(now: Date())
+            if store.loadLastResetAt() == nil {
+                store.saveLastResetAt(anchor)
+            }
+            resetIfNeeded(now: now)
+            refreshNextResetAt(now: now)
+            let lastResetAfterPrepare = store.loadLastResetAt()
+            appendDebugLog("監視開始前リセット判定: anchor=\(anchor), lastReset=\(String(describing: lastResetAfterPrepare))")
 
             do {
                 appendDebugLog("監視開始を要求")
                 screenTimeManager.clearBlocks()
                 store.clearBlockedTokens()
-                store.saveLastResetAt(currentResetAnchor(now: Date()))
                 try screenTimeManager.startMonitoring(
                     selection: selection,
                     appLimits: normalizedLimits,
@@ -399,7 +452,9 @@ final class ContentViewModel: ObservableObject {
         syncManager.stop()
         followupSyncWorkItem?.cancel()
         followupSyncWorkItem = nil
-        refreshNextResetAt(now: Date())
+        let now = Date()
+        refreshNextResetAt(now: now)
+        refreshReportInterval(now: now)
     }
 
     func updateSelection(_ selection: FamilyActivitySelection) {
@@ -423,12 +478,14 @@ final class ContentViewModel: ObservableObject {
         resetHour = hour
         resetMinute = minute
         store.saveResetTime(hour: hour, minute: minute)
-        refreshNextResetAt(now: Date())
-        resetIfNeeded(now: Date())
+        let now = Date()
+        refreshNextResetAt(now: now)
+        refreshReportInterval(now: now)
+        resetIfNeeded(now: now)
     }
 
     func remainingMinutes(for tokenKey: String) -> Int {
-        let used = usageMinutes[tokenKey] ?? 0
+        let used = usedMinutes(for: tokenKey)
         let limit = limitMinutes(for: tokenKey)
         return max(limit - used, 0)
     }
@@ -442,6 +499,17 @@ final class ContentViewModel: ObservableObject {
             return indexed
         }
         return defaultLimitMinutes
+    }
+
+    func usedMinutes(for tokenKey: String) -> Int {
+        if let used = usageMinutes[tokenKey] {
+            return used
+        }
+        if let index = indexForTokenKey(tokenKey),
+           let indexed = usageMinutes[limitIndexKey(index)] {
+            return indexed
+        }
+        return 0
     }
 
     func formatRemaining(_ minutes: Int) -> String {
@@ -498,6 +566,7 @@ final class ContentViewModel: ObservableObject {
         var blockedTokens = store.loadBlockedTokens()
         let latestUsage = store.loadUsageMinutes()
         let usageUpdatedAt = store.loadUsageUpdatedAt()
+        let reportLastRunAt = store.loadReportLastRunAt()
         let now = Date()
         lastUsageSyncAt = usageUpdatedAt
         refreshNextResetAt(now: now)
@@ -507,6 +576,10 @@ final class ContentViewModel: ObservableObject {
         let forceSyncFailure = false
 #endif
         let isUsageFresh = usageUpdatedAt.map { now.timeIntervalSince($0) <= syncStaleThresholdSeconds } ?? false
+        let isReportRunFresh = reportLastRunAt.map { now.timeIntervalSince($0) <= syncStaleThresholdSeconds } ?? false
+        if isReportRunFresh {
+            didLogMissingReportRun = false
+        }
 
         if forceSyncFailure {
             syncErrorMessage = UIErrorText.syncFailed
@@ -518,14 +591,35 @@ final class ContentViewModel: ObservableObject {
             usageMinutes = latestUsage
             syncWarmupUntil = nil
             syncErrorMessage = nil
+            didLogMissingReportRun = false
             if wasSyncDelayed {
                 appendDebugLog("同期遅延から復帰")
                 wasSyncDelayed = false
             }
         } else if let warmupUntil = syncWarmupUntil, now < warmupUntil {
             syncErrorMessage = nil
+            if !isReportRunFresh && !didLogMissingReportRun {
+                appendDebugLog("ReportExt実行を未検知")
+                didLogMissingReportRun = true
+            }
+        } else if !isReportRunFresh {
+            // Keep previous usage and continue in monitor-based fallback mode
+            // when report extension execution cannot be observed.
+            syncErrorMessage = nil
+            if !didLogMissingReportRun {
+                appendDebugLog("ReportExt実行を未検知")
+                didLogMissingReportRun = true
+            }
+            if wasSyncDelayed {
+                appendDebugLog("同期遅延から復帰")
+                wasSyncDelayed = false
+            }
         } else {
             syncErrorMessage = UIErrorText.syncFailed
+            if !isReportRunFresh && !didLogMissingReportRun {
+                appendDebugLog("ReportExt実行を未検知")
+                didLogMissingReportRun = true
+            }
             if !wasSyncDelayed {
                 appendDebugLog("同期遅延を検知")
                 wasSyncDelayed = true
@@ -550,7 +644,7 @@ final class ContentViewModel: ObservableObject {
         var blockedKeys = Set(blockedTokens.map { TokenKey.sortKey($0) })
         for token in selectedTokens {
             let key = TokenKey.sortKey(token)
-            let used = usageMinutes[key] ?? 0
+            let used = usedMinutes(for: key)
             let limit = limitMinutes(for: key)
             if used >= limit && !blockedKeys.contains(key) {
                 blockedTokens.append(token)
@@ -591,12 +685,36 @@ final class ContentViewModel: ObservableObject {
         }
         usageMinutes = [:]
         store.saveUsageMinutes([:])
+        store.clearUsageEventAcceptedAt()
         store.clearBlockedTokens()
         blockedTokenKeys = []
         screenTimeManager.clearBlocks()
         store.saveLastResetAt(anchor)
         refreshNextResetAt(now: now)
         appendDebugLog("日次リセットを実行")
+    }
+
+    private func isResetTimeDrifted(lastReset: Date) -> Bool {
+        let calendar = Calendar.current
+        let parts = calendar.dateComponents([.hour, .minute], from: lastReset)
+        guard let hour = parts.hour, let minute = parts.minute else {
+            return false
+        }
+        return hour != resetHour || minute != resetMinute
+    }
+
+    private func resetStateForResetTimeChange(now: Date, lastReset: Date, newAnchor: Date) {
+        usageMinutes = [:]
+        store.saveUsageMinutes([:])
+        store.clearUsageEventAcceptedAt()
+        store.clearBlockedTokens()
+        blockedTokenKeys = []
+        screenTimeManager.clearBlocks()
+        store.saveLastResetAt(newAnchor)
+        appendDebugLog(
+            "リセット時刻変更を検知: 使用時間を初期化(anchor=\(newAnchor), lastReset=\(lastReset))"
+        )
+        refreshNextResetAt(now: now)
     }
 
 
@@ -712,8 +830,16 @@ final class ContentViewModel: ObservableObject {
     }
 
     private func requestUsageReportRefresh(reason: String) {
-        reportRefresh = Date()
+        let now = Date()
+        reportRefresh = now
+        refreshReportInterval(now: now)
         appendDebugLog("使用時間同期を要求: \(reason)")
+    }
+
+    func markReportHostRendered(trigger: String) {
+#if DEBUG
+        appendDebugLog("ReportHost描画: \(trigger)")
+#endif
     }
 
     private func scheduleFollowupSync(baseReason: String) {
@@ -724,26 +850,47 @@ final class ContentViewModel: ObservableObject {
         followupSyncWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + followupSyncDelaySeconds, execute: workItem)
     }
+
+    private func refreshReportInterval(now: Date) {
+        reportInterval = currentReportInterval(now: now)
+    }
 }
 
 private struct UsageReportHostView: View {
-    let interval: DateInterval
     let refreshToken: Date
+    let selection: FamilyActivitySelection
+    let interval: DateInterval
+    let onRender: ((String) -> Void)?
 
     var body: some View {
-        DeviceActivityReport(
-            .daily,
-            filter: DeviceActivityFilter(
-                segment: .daily(during: interval),
-                users: .all,
-                devices: .init([.iPhone, .iPad])
-            )
-        )
-        .id(refreshToken)
-        .frame(width: 2, height: 2)
-        .clipped()
+        DeviceActivityReport(.daily, filter: reportFilter)
+        .id(reportIdentity)
+        .frame(width: 8, height: 8)
+        .opacity(0.01)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear {
+            onRender?("appear")
+        }
+        .onChange(of: refreshToken) { _ in
+            onRender?("refresh")
+        }
+    }
+
+    private var reportIdentity: String {
+        let ts = Int(refreshToken.timeIntervalSince1970)
+        let start = Int(interval.start.timeIntervalSince1970)
+        let end = Int(interval.end.timeIntervalSince1970)
+        return "\(ts)-\(start)-\(end)-\(selection.applicationTokens.count)"
+    }
+
+    private var reportFilter: DeviceActivityFilter {
+        // Keep report execution stable by requesting the daily segment broadly,
+        // then map selected tokens inside the report extension.
+        return DeviceActivityFilter(
+            segment: .daily(during: interval),
+            devices: .all
+        )
     }
 }
 
@@ -771,8 +918,12 @@ struct ContentView: View {
                     }
                 }
                 UsageReportHostView(
-                    interval: viewModel.currentReportInterval(),
-                    refreshToken: viewModel.reportRefresh
+                    refreshToken: viewModel.reportRefresh,
+                    selection: viewModel.selection,
+                    interval: viewModel.reportInterval,
+                    onRender: { trigger in
+                        viewModel.markReportHostRendered(trigger: trigger)
+                    }
                 )
                 .padding(.top, 1)
                 .padding(.leading, 1)
@@ -983,9 +1134,8 @@ struct SettingsSummaryView: View {
                     NavigationLink {
                         AppDetailView(
                             title: "アプリ \(entry.index + 1)",
-                            limitMinutes: viewModel.limitMinutes(for: entry.tokenKey),
-                            remainingMinutes: viewModel.remainingMinutes(for: entry.tokenKey),
-                            isBlocked: viewModel.isBlocked(tokenKey: entry.tokenKey)
+                            tokenKey: entry.tokenKey,
+                            viewModel: viewModel
                         )
                     } label: {
                         HStack {
@@ -1072,19 +1222,18 @@ struct SettingsSummaryView: View {
 
 struct AppDetailView: View {
     let title: String
-    let limitMinutes: Int
-    let remainingMinutes: Int
-    let isBlocked: Bool
+    let tokenKey: String
+    @ObservedObject var viewModel: ContentViewModel
 
     var body: some View {
         VStack(spacing: 16) {
             Text(title)
                 .font(.title2)
-            Text("上限: \(limitMinutes)分")
-            Text("残り: \(formatRemaining(remainingMinutes))")
+            Text("上限: \(viewModel.limitMinutes(for: tokenKey))分")
+            Text("残り: \(formatRemaining(viewModel.remainingMinutes(for: tokenKey)))")
                 .font(.headline)
-            Text(isBlocked ? "制限中" : "使用可能")
-                .foregroundColor(isBlocked ? .red : .green)
+            Text(viewModel.isBlocked(tokenKey: tokenKey) ? "制限中" : "使用可能")
+                .foregroundColor(viewModel.isBlocked(tokenKey: tokenKey) ? .red : .green)
             Spacer()
         }
         .padding()

@@ -20,12 +20,10 @@
     <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
-    <key>NSExtension</key>
+    <key>EXAppExtensionAttributes</key>
     <dict>
-        <key>NSExtensionPointIdentifier</key>
-        <string>com.apple.deviceactivityreport-extension</string>
-        <key>NSExtensionPrincipalClass</key>
-        <string>$(PRODUCT_MODULE_NAME).UsageReportExtension</string>
+        <key>EXExtensionPointIdentifier</key>
+        <string>com.apple.deviceactivityui.report-extension</string>
     </dict>
 </dict>
 </plist>

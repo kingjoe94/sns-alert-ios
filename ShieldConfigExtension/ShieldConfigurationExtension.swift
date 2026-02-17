@@ -61,17 +61,21 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         let hour = defaults.integer(forKey: "resetHour")
         let minute = defaults.integer(forKey: "resetMinute")
         let calendar = Calendar.current
-        let todayReset = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) ?? now
-        guard now >= todayReset else { return }
-        if let last = defaults.object(forKey: lastResetKey) as? Date, last >= todayReset {
+        let anchor = currentResetAnchor(
+            now: now,
+            resetHour: hour,
+            resetMinute: minute,
+            calendar: calendar
+        )
+        if let last = defaults.object(forKey: lastResetKey) as? Date, last >= anchor {
             return
         }
         ManagedSettingsStore(named: managedStoreName).shield.applications = nil
         ManagedSettingsStore().shield.applications = nil
         defaults.removeObject(forKey: blockedTokensKey)
         defaults.removeObject(forKey: usageKey)
-        defaults.set(todayReset, forKey: lastResetKey)
-        appendDebugLog("ShieldExtで日次リセットを実行: \(todayReset)")
+        defaults.set(anchor, forKey: lastResetKey)
+        appendDebugLog("ShieldExtで日次リセットを実行: \(anchor)")
     }
 
     private func unlockMessage(now: Date = Date()) -> String {
@@ -103,5 +107,23 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             logs.removeFirst(logs.count - 200)
         }
         defaults.set(logs, forKey: debugLogsKey)
+    }
+
+    private func currentResetAnchor(
+        now: Date,
+        resetHour: Int,
+        resetMinute: Int,
+        calendar: Calendar
+    ) -> Date {
+        let todayReset = calendar.date(
+            bySettingHour: resetHour,
+            minute: resetMinute,
+            second: 0,
+            of: now
+        ) ?? now
+        if now < todayReset {
+            return calendar.date(byAdding: .day, value: -1, to: todayReset) ?? todayReset
+        }
+        return todayReset
     }
 }

@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		6F6BD331A4494A79A134D670 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B1572F2BDE16001A97DB /* FamilyControls.framework */; };
-		ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B246B13D2F296A49001A97DB /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B246B13C2F296A48001A97DB /* DeviceActivity.framework */; };
 		B246B1452F296A49001A97DB /* UsageMonitorExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B246B14C2F29715F001A97DB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B246B14B2F29715F001A97DB /* ContentView.swift */; };
@@ -46,6 +46,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		ADE6CFF3B0184531ACF6A000 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Extensions;
+			dstSubfolderSpec = 1;
+			files = (
+				ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B246B14A2F296A49001A97DB /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -54,7 +65,6 @@
 			files = (
 				B246B1452F296A49001A97DB /* UsageMonitorExtension.appex in Embed Foundation Extensions */,
 				B246B1692F2C5654001A97DB /* ShieldConfigExtension.appex in Embed Foundation Extensions */,
-				ADE6CFF2B0184531ACF6A000 /* UsageReportExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -62,7 +72,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = UsageReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B246B13A2F296A48001A97DB /* UsageMonitorExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageMonitorExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B246B13C2F296A48001A97DB /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 		B246B14B2F29715F001A97DB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -231,7 +241,7 @@
 			);
 			productName = UsageReportExtension;
 			productReference = 74A4BFBA9B054018AC35D12E /* UsageReportExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
+			productType = "com.apple.product-type.extensionkit-extension";
 		};
 		B246B1392F296A48001A97DB /* UsageMonitorExtension */ = {
 			isa = PBXNativeTarget;
@@ -285,6 +295,7 @@
 				B294D0B02F228261002CDE1E /* Frameworks */,
 				B294D0B12F228261002CDE1E /* Resources */,
 				B246B14A2F296A49001A97DB /* Embed Foundation Extensions */,
+				ADE6CFF3B0184531ACF6A000 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
@@ -314,7 +325,7 @@
 				};
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					B246B1392F296A48001A97DB = {
 						CreatedOnToolsVersion = 26.2;
@@ -437,7 +448,6 @@
 				CODE_SIGN_ENTITLEMENTS = UsageReportExtension/UsageReportExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UsageReportExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UsageReportExtension;
@@ -467,7 +477,6 @@
 				CODE_SIGN_ENTITLEMENTS = UsageMonitorExtension/UsageMonitorExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UsageMonitorExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UsageMonitorExtension;
@@ -497,7 +506,6 @@
 				CODE_SIGN_ENTITLEMENTS = UsageMonitorExtension/UsageMonitorExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UsageMonitorExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UsageMonitorExtension;
@@ -528,7 +536,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfigExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigExtension;
@@ -558,7 +565,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfigExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigExtension;
@@ -616,6 +622,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -639,6 +646,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -679,6 +687,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -695,6 +704,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -709,7 +719,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -746,7 +755,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -780,7 +788,6 @@
 				CODE_SIGN_ENTITLEMENTS = UsageReportExtension/UsageReportExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2858U7LU96;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UsageReportExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UsageReportExtension;

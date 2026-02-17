@@ -100,6 +100,44 @@ final class MonitoringLogicTests: XCTestCase {
         XCTAssertEqual(reason, .none)
     }
 
+    func testUsageThresholdIgnoreReasonUsesRearmStartForUnsyncedWindow() {
+        let calendar = fixedCalendar()
+        let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let rearm = reset.addingTimeInterval(7200)
+        let now = rearm.addingTimeInterval(120)
+        let syncedBeforeRearm = rearm.addingTimeInterval(-60)
+
+        let reason = MonitoringLogic.usageThresholdIgnoreReason(
+            now: now,
+            lastReset: reset,
+            thresholdEvaluationStart: rearm,
+            usageUpdatedAt: syncedBeforeRearm,
+            usedMinutes: nil,
+            limitMinutes: 1
+        )
+
+        XCTAssertEqual(reason, .usageNotSynced(elapsedSeconds: 120))
+    }
+
+    func testUsageThresholdIgnoreReasonStopsRearmUnsyncedIgnoreAfterWindow() {
+        let calendar = fixedCalendar()
+        let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let rearm = reset.addingTimeInterval(7200)
+        let now = rearm.addingTimeInterval(181)
+        let syncedBeforeRearm = rearm.addingTimeInterval(-60)
+
+        let reason = MonitoringLogic.usageThresholdIgnoreReason(
+            now: now,
+            lastReset: reset,
+            thresholdEvaluationStart: rearm,
+            usageUpdatedAt: syncedBeforeRearm,
+            usedMinutes: nil,
+            limitMinutes: 1
+        )
+
+        XCTAssertEqual(reason, .none)
+    }
+
     func testUsageThresholdIgnoreReasonIgnoresWhenUsageIsBelowLimitAfterSync() {
         let calendar = fixedCalendar()
         let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
@@ -149,6 +187,46 @@ final class MonitoringLogicTests: XCTestCase {
         )
 
         XCTAssertEqual(reason, .none)
+    }
+
+    func testShouldAcceptUsageMinuteEventReturnsTrueWhenNoLastAcceptedAt() {
+        let calendar = fixedCalendar()
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldAcceptUsageMinuteEvent(
+                now: now,
+                lastAcceptedAt: nil
+            )
+        )
+    }
+
+    func testShouldAcceptUsageMinuteEventReturnsFalseInsideMinInterval() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(20)
+
+        XCTAssertFalse(
+            MonitoringLogic.shouldAcceptUsageMinuteEvent(
+                now: now,
+                lastAcceptedAt: last,
+                minIntervalSeconds: 50
+            )
+        )
+    }
+
+    func testShouldAcceptUsageMinuteEventReturnsTrueAtMinInterval() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(50)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldAcceptUsageMinuteEvent(
+                now: now,
+                lastAcceptedAt: last,
+                minIntervalSeconds: 50
+            )
+        )
     }
 
     private func fixedCalendar() -> Calendar {

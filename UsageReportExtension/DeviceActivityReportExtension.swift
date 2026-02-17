@@ -2,12 +2,14 @@ import DeviceActivity
 import FamilyControls
 import Foundation
 import ManagedSettings
-import SwiftUI
+@preconcurrency import SwiftUI
 import ExtensionKit
 
 private let appGroupID = "group.com.xa504.snsalert"
 private let usageKey = "usageMinutes"
 private let usageUpdatedAtKey = "usageUpdatedAt"
+private let reportLastRunAtKey = "reportLastRunAt"
+private let orderedTokensKey = "orderedTokens"
 private let resetHourKey = "resetHour"
 private let resetMinuteKey = "resetMinute"
 private let debugLogsKey = "debugLogs"
@@ -30,36 +32,34 @@ private func appendReportDebugLog(_ message: String, now: Date = Date()) {
     defaults.set(logs, forKey: debugLogsKey)
 }
 
-@MainActor
 @main
 struct UsageReportExtension: DeviceActivityReportExtension {
-    typealias Configuration = ExtensionKit.AppExtensionSceneConfiguration
-
-    @MainActor init() {
+    init() {
         appendReportDebugLog("extension初期化")
     }
 
-    @MainActor var configuration: Configuration {
-        Configuration(UsageReportConfiguration())
-    }
-
+    @MainActor
     var body: some DeviceActivityReportScene {
-        UsageReportConfiguration()
+        UsageReportConfiguration { marker in
+            UsageReportView(marker: marker)
+        }
     }
 }
 
 struct UsageReportConfiguration: DeviceActivityReportScene {
     let context: DeviceActivityReport.Context = .daily
-    typealias Configuration = String
-    typealias Content = UsageReportView
-
-    var body: some ExtensionKit.AppExtensionScene {
-        self
-    }
+    let content: @Sendable (String) -> UsageReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> String {
         appendReportDebugLog("makeConfiguration開始")
         var usageSeconds: [String: TimeInterval] = [:]
+        let defaults = UserDefaults(suiteName: appGroupID)
+        if defaults == nil {
+            NSLog("[ReportExt] UserDefaults suite unavailable: %@", appGroupID)
+        }
+        defaults?.set(Date(), forKey: reportLastRunAtKey)
+        let tokenIndexMaps = loadTokenIndexMaps(defaults: defaults)
+        var indexedMatches = 0
         let resetInterval = currentResetInterval()
         for await day in data {
             for await segment in day.activitySegments {
@@ -73,8 +73,16 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
                 let ratio = overlapDuration / segment.dateInterval.duration
                 for await category in segment.categories {
                     for await app in category.applications {
+                        guard let appToken = app.application.token else {
+                            continue
+                        }
                         let key = tokenKeyForApplication(app.application)
-                        usageSeconds[key, default: 0] += app.totalActivityDuration * ratio
+                        let seconds = app.totalActivityDuration * ratio
+                        usageSeconds[key, default: 0] += seconds
+                        if let index = tokenIndexMaps.byToken[appToken] ?? tokenIndexMaps.bySortKey[key] {
+                            usageSeconds["idx_\(index)", default: 0] += seconds
+                            indexedMatches += 1
+                        }
                     }
                 }
             }
@@ -84,7 +92,6 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
         for (key, seconds) in usageSeconds {
             usageMinutes[key] = Int(seconds / 60)
         }
-        let defaults = UserDefaults(suiteName: appGroupID)
 #if DEBUG
         if defaults?.bool(forKey: debugForceSyncFailureKey) == true {
             defaults?.removeObject(forKey: usageUpdatedAtKey)
@@ -96,11 +103,11 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
             defaults?.set(encoded, forKey: usageKey)
         }
         defaults?.set(Date(), forKey: usageUpdatedAtKey)
-        appendReportDebugLog("使用時間を同期: \(usageMinutes.count) apps")
-        return ""
+        appendReportDebugLog(
+            "使用時間を同期: keys=\(usageMinutes.count), idxMatch=\(indexedMatches), ordered=\(tokenIndexMaps.orderedCount)"
+        )
+        return "sync_\(Int(Date().timeIntervalSince1970))"
     }
-
-    let content: (String) -> UsageReportView = { (_: String) in UsageReportView() }
 
     private func tokenKeyForApplication(_ application: Application) -> String {
         guard let data = try? JSONEncoder().encode(application.token) else {
@@ -120,6 +127,36 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
         return DateInterval(start: anchor, end: end)
     }
 
+    private struct TokenIndexMaps {
+        var byToken: [Token<Application>: Int]
+        var bySortKey: [String: Int]
+        var orderedCount: Int
+    }
+
+    private func loadTokenIndexMaps(defaults: UserDefaults?) -> TokenIndexMaps {
+        guard let defaults,
+              let items = defaults.array(forKey: orderedTokensKey) as? [Data] else {
+            return TokenIndexMaps(byToken: [:], bySortKey: [:], orderedCount: 0)
+        }
+        let tokens = items.compactMap { try? JSONDecoder().decode(Token<Application>.self, from: $0) }
+        var byToken: [Token<Application>: Int] = [:]
+        var bySortKey: [String: Int] = [:]
+        byToken.reserveCapacity(tokens.count)
+        bySortKey.reserveCapacity(tokens.count)
+        for (index, token) in tokens.enumerated() {
+            byToken[token] = index
+            bySortKey[tokenSortKey(token)] = index
+        }
+        return TokenIndexMaps(byToken: byToken, bySortKey: bySortKey, orderedCount: tokens.count)
+    }
+
+    private func tokenSortKey<T: Encodable>(_ token: T) -> String {
+        guard let data = try? JSONEncoder().encode(token) else {
+            return String(describing: token)
+        }
+        return data.base64EncodedString()
+    }
+
     private func overlapDuration(lhs: DateInterval, rhs: DateInterval) -> TimeInterval? {
         let start = max(lhs.start, rhs.start)
         let end = min(lhs.end, rhs.end)
@@ -130,8 +167,11 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
 }
 
 struct UsageReportView: View {
+    let marker: String
+
     var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
+        Text(marker.isEmpty ? "." : marker)
+            .font(.system(size: 1))
+            .opacity(0.01)
     }
 }

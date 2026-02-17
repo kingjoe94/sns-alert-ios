@@ -44,6 +44,7 @@ enum MonitoringLogic {
     static func usageThresholdIgnoreReason(
         now: Date,
         lastReset: Date?,
+        thresholdEvaluationStart: Date? = nil,
         usageUpdatedAt: Date?,
         usedMinutes: Int?,
         limitMinutes: Int,
@@ -52,13 +53,14 @@ enum MonitoringLogic {
     ) -> UsageThresholdIgnoreReason {
         guard let lastReset else { return .none }
 
-        let elapsedFromReset = now.timeIntervalSince(lastReset)
-        let syncedDelay = usageUpdatedAt?.timeIntervalSince(lastReset)
+        let thresholdStart = max(lastReset, thresholdEvaluationStart ?? lastReset)
+        let elapsedFromThresholdStart = now.timeIntervalSince(thresholdStart)
+        let syncedDelay = usageUpdatedAt?.timeIntervalSince(thresholdStart)
 
-        // Ignore brief post-reset races, then fall back to threshold-only behavior.
+        // Ignore brief post-reset/rearm races, then fall back to threshold-only behavior.
         if syncedDelay == nil || syncedDelay! < minSyncedUsageDelaySeconds {
-            if elapsedFromReset >= 0 && elapsedFromReset < unsyncedThresholdIgnoreWindowSeconds {
-                return .usageNotSynced(elapsedSeconds: Int(elapsedFromReset))
+            if elapsedFromThresholdStart >= 0 && elapsedFromThresholdStart < unsyncedThresholdIgnoreWindowSeconds {
+                return .usageNotSynced(elapsedSeconds: Int(elapsedFromThresholdStart))
             }
             return .none
         }
@@ -70,5 +72,16 @@ enum MonitoringLogic {
         }
 
         return .none
+    }
+
+    static func shouldAcceptUsageMinuteEvent(
+        now: Date,
+        lastAcceptedAt: Date?,
+        minIntervalSeconds: TimeInterval = 50
+    ) -> Bool {
+        guard let lastAcceptedAt else { return true }
+        let delta = now.timeIntervalSince(lastAcceptedAt)
+        guard delta >= 0 else { return false }
+        return delta >= minIntervalSeconds
     }
 }
