@@ -3,6 +3,7 @@ import FamilyControls
 import DeviceActivity
 import ManagedSettings
 import Combine
+import UserNotifications
 
 private let appGroupID = "group.com.xa504.snsalert"
 private let managedStoreName = ManagedSettingsStore.Name("shared")
@@ -25,6 +26,7 @@ final class AppStore {
     private let defaults: UserDefaults
     private let selectionKey = "savedSelection"
     private let appLimitsKey = "appLimits"
+    private let continuousAlertLimitsKey = "continuousAlertLimits"
     private let resetHourKey = "resetHour"
     private let resetMinuteKey = "resetMinute"
     private let monitoringKey = "monitoringEnabled"
@@ -38,6 +40,10 @@ final class AppStore {
     private let orderedTokensKey = "orderedTokens"
     private let debugLogsKey = "debugLogs"
     private let debugForceSyncFailureKey = "debugForceSyncFailure"
+    private let continuousUsageKey = "continuousUsageMinutes"
+    private let continuousLastEventAtKey = "continuousLastEventAt"
+    private let continuousLastNotifiedAtKey = "continuousLastNotifiedAt"
+    private let continuousActiveIndexKey = "continuousActiveIndex"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -66,6 +72,19 @@ final class AppStore {
     func saveAppLimits(_ limits: [String: Int]) {
         if let data = try? JSONEncoder().encode(limits) {
             defaults.set(data, forKey: appLimitsKey)
+        }
+    }
+
+    func loadContinuousAlertLimits() -> [String: Int] {
+        guard let data = defaults.data(forKey: continuousAlertLimitsKey) else {
+            return [:]
+        }
+        return (try? JSONDecoder().decode([String: Int].self, from: data)) ?? [:]
+    }
+
+    func saveContinuousAlertLimits(_ limits: [String: Int]) {
+        if let data = try? JSONEncoder().encode(limits) {
+            defaults.set(data, forKey: continuousAlertLimitsKey)
         }
     }
 
@@ -111,6 +130,13 @@ final class AppStore {
 
     func clearUsageEventAcceptedAt() {
         defaults.removeObject(forKey: usageEventAcceptedAtKey)
+    }
+
+    func loadContinuousUsageMinutes() -> [String: Int] {
+        guard let data = defaults.data(forKey: continuousUsageKey) else {
+            return [:]
+        }
+        return (try? JSONDecoder().decode([String: Int].self, from: data)) ?? [:]
     }
 
     func loadUsageUpdatedAt() -> Date? {
@@ -177,6 +203,13 @@ final class AppStore {
 
     func saveDebugForceSyncFailure(_ value: Bool) {
         defaults.set(value, forKey: debugForceSyncFailureKey)
+    }
+
+    func clearContinuousUsageState() {
+        defaults.removeObject(forKey: continuousUsageKey)
+        defaults.removeObject(forKey: continuousLastEventAtKey)
+        defaults.removeObject(forKey: continuousLastNotifiedAtKey)
+        defaults.removeObject(forKey: continuousActiveIndexKey)
     }
 }
 
@@ -313,9 +346,11 @@ final class ContentViewModel: ObservableObject {
     }
 
     @Published var authorized = false
+    @Published var notificationAuthorized = false
     @Published var selection = FamilyActivitySelection()
     let defaultLimitMinutes = 30
     @Published var appLimits: [String: Int] = [:]
+    @Published var continuousAlertLimits: [String: Int] = [:]
     @Published var resetHour = 0
     @Published var resetMinute = 0
     @Published var isMonitoring = false
@@ -323,6 +358,7 @@ final class ContentViewModel: ObservableObject {
     @Published private var uiError: UIErrorKind? = nil
     @Published var syncErrorMessage: String? = nil
     @Published var usageMinutes: [String: Int] = [:]
+    @Published var continuousUsageMinutes: [String: Int] = [:]
     @Published var lastUsageSyncAt: Date? = nil
     @Published var nextResetAt: Date = Date()
     @Published var blockedTokenKeys: Set<String> = []
@@ -353,12 +389,14 @@ final class ContentViewModel: ObservableObject {
     func load() {
         selection = store.loadSelection()
         appLimits = store.loadAppLimits()
+        continuousAlertLimits = store.loadContinuousAlertLimits()
         let reset = store.loadResetTime()
         resetHour = reset.hour
         resetMinute = reset.minute
         isMonitoring = store.loadMonitoringEnabled()
         setupCompleted = store.loadSetupCompleted()
         usageMinutes = store.loadUsageMinutes()
+        continuousUsageMinutes = store.loadContinuousUsageMinutes()
         lastUsageSyncAt = store.loadUsageUpdatedAt()
         blockedTokenKeys = Set(store.loadBlockedTokens().map { TokenKey.sortKey($0) })
         debugLogs = store.loadDebugLogs()
@@ -368,11 +406,15 @@ final class ContentViewModel: ObservableObject {
         debugForceSyncFailure = false
 #endif
         ensureAppLimitsForSelection()
+        ensureContinuousAlertLimitsForSelection()
         if store.loadLastResetAt() == nil {
             store.saveLastResetAt(currentResetAnchor(now: Date()))
         }
         updateAuthorizationStatus()
         refreshPermissionErrorState()
+        Task {
+            await refreshNotificationAuthorizationStatus()
+        }
         let now = Date()
         refreshNextResetAt(now: now)
         refreshReportInterval(now: now)
@@ -392,8 +434,14 @@ final class ContentViewModel: ObservableObject {
                 return
             }
             ensureAppLimitsForSelection()
+            ensureContinuousAlertLimitsForSelection()
             let normalizedLimits = normalizedAppLimitsForSelection()
+            let normalizedContinuousLimits = normalizedContinuousAlertLimitsForSelection()
             appLimits = normalizedLimits
+            continuousAlertLimits = normalizedContinuousLimits
+            await ensureNotificationAuthorizationIfNeeded(
+                hasEnabledContinuousAlert: normalizedContinuousLimits.values.contains(where: { $0 > 0 })
+            )
             let now = Date()
             let anchor = currentResetAnchor(now: now)
             if let lastReset = store.loadLastResetAt(),
@@ -402,11 +450,14 @@ final class ContentViewModel: ObservableObject {
             }
             store.saveSelection(selection)
             store.saveAppLimits(normalizedLimits)
+            store.saveContinuousAlertLimits(normalizedContinuousLimits)
             store.saveResetTime(hour: resetHour, minute: resetMinute)
             if store.loadLastResetAt() == nil {
                 store.saveLastResetAt(anchor)
             }
             resetIfNeeded(now: now)
+            store.clearContinuousUsageState()
+            continuousUsageMinutes = [:]
             refreshNextResetAt(now: now)
             let lastResetAfterPrepare = store.loadLastResetAt()
             appendDebugLog("監視開始前リセット判定: anchor=\(anchor), lastReset=\(String(describing: lastResetAfterPrepare))")
@@ -442,6 +493,8 @@ final class ContentViewModel: ObservableObject {
         screenTimeManager.stopMonitoring()
         screenTimeManager.clearBlocks()
         store.clearBlockedTokens()
+        store.clearContinuousUsageState()
+        continuousUsageMinutes = [:]
         isMonitoring = false
         store.saveMonitoringEnabled(false)
         syncWarmupUntil = nil
@@ -462,6 +515,7 @@ final class ContentViewModel: ObservableObject {
         self.selection = selection
         store.saveSelection(selection)
         ensureAppLimitsForSelection()
+        ensureContinuousAlertLimitsForSelection()
     }
 
     func updateAppLimit(tokenKey: String, value: Int) {
@@ -471,6 +525,21 @@ final class ContentViewModel: ObservableObject {
             appLimits[limitIndexKey(index)] = value
         }
         store.saveAppLimits(appLimits)
+    }
+
+    func updateContinuousAlertLimit(tokenKey: String, value: Int) {
+        guard !isMonitoring else { return }
+        let normalized = max(value, 0)
+        continuousAlertLimits[tokenKey] = normalized
+        if let index = indexForTokenKey(tokenKey) {
+            continuousAlertLimits[limitIndexKey(index)] = normalized
+        }
+        store.saveContinuousAlertLimits(continuousAlertLimits)
+        Task {
+            await ensureNotificationAuthorizationIfNeeded(
+                hasEnabledContinuousAlert: continuousAlertLimits.values.contains(where: { $0 > 0 })
+            )
+        }
     }
 
     func updateResetTime(hour: Int, minute: Int) {
@@ -512,6 +581,33 @@ final class ContentViewModel: ObservableObject {
         return 0
     }
 
+    func continuousAlertLimitMinutes(for tokenKey: String) -> Int {
+        if let value = continuousAlertLimits[tokenKey] {
+            return value
+        }
+        if let index = indexForTokenKey(tokenKey),
+           let indexed = continuousAlertLimits[limitIndexKey(index)] {
+            return indexed
+        }
+        return 0
+    }
+
+    func continuousAlertDisplayText(for tokenKey: String) -> String {
+        let value = continuousAlertLimitMinutes(for: tokenKey)
+        return value > 0 ? "\(value)分" : "OFF"
+    }
+
+    func continuousUsageStreakMinutes(for tokenKey: String) -> Int {
+        if let value = continuousUsageMinutes[tokenKey] {
+            return value
+        }
+        if let index = indexForTokenKey(tokenKey),
+           let indexed = continuousUsageMinutes[limitIndexKey(index)] {
+            return indexed
+        }
+        return 0
+    }
+
     func formatRemaining(_ minutes: Int) -> String {
         let hours = minutes / 60
         let mins = minutes % 60
@@ -525,6 +621,8 @@ final class ContentViewModel: ObservableObject {
     func debugResetUsage() {
         usageMinutes = [:]
         store.saveUsageMinutes([:])
+        continuousUsageMinutes = [:]
+        store.clearContinuousUsageState()
     }
 
     func debugToggleBlock() {
@@ -565,9 +663,11 @@ final class ContentViewModel: ObservableObject {
         resetIfNeeded(now: Date())
         var blockedTokens = store.loadBlockedTokens()
         let latestUsage = store.loadUsageMinutes()
+        let latestContinuousUsage = store.loadContinuousUsageMinutes()
         let usageUpdatedAt = store.loadUsageUpdatedAt()
         let reportLastRunAt = store.loadReportLastRunAt()
         let now = Date()
+        continuousUsageMinutes = latestContinuousUsage
         lastUsageSyncAt = usageUpdatedAt
         refreshNextResetAt(now: now)
 #if DEBUG
@@ -589,6 +689,7 @@ final class ContentViewModel: ObservableObject {
             }
         } else if isUsageFresh {
             usageMinutes = latestUsage
+            continuousUsageMinutes = latestContinuousUsage
             syncWarmupUntil = nil
             syncErrorMessage = nil
             didLogMissingReportRun = false
@@ -628,6 +729,7 @@ final class ContentViewModel: ObservableObject {
 
         // Sync error state: keep current block state as-is and skip usage-based reconciliation.
         if syncErrorMessage != nil {
+            continuousUsageMinutes = latestContinuousUsage
             blockedTokenKeys = Set(blockedTokens.map { TokenKey.sortKey($0) })
             screenTimeManager.applyBlocks(blockedTokens)
             debugLogs = store.loadDebugLogs()
@@ -685,6 +787,8 @@ final class ContentViewModel: ObservableObject {
         }
         usageMinutes = [:]
         store.saveUsageMinutes([:])
+        continuousUsageMinutes = [:]
+        store.clearContinuousUsageState()
         store.clearUsageEventAcceptedAt()
         store.clearBlockedTokens()
         blockedTokenKeys = []
@@ -706,6 +810,8 @@ final class ContentViewModel: ObservableObject {
     private func resetStateForResetTimeChange(now: Date, lastReset: Date, newAnchor: Date) {
         usageMinutes = [:]
         store.saveUsageMinutes([:])
+        continuousUsageMinutes = [:]
+        store.clearContinuousUsageState()
         store.clearUsageEventAcceptedAt()
         store.clearBlockedTokens()
         blockedTokenKeys = []
@@ -726,6 +832,14 @@ final class ContentViewModel: ObservableObject {
         }
     }
 
+    private func ensureContinuousAlertLimitsForSelection() {
+        let updated = normalizedContinuousAlertLimitsForSelection()
+        if updated != continuousAlertLimits {
+            continuousAlertLimits = updated
+            store.saveContinuousAlertLimits(updated)
+        }
+    }
+
     private func normalizedAppLimitsForSelection() -> [String: Int] {
         var normalized = appLimits
         let tokens = Array(selection.applicationTokens)
@@ -734,6 +848,20 @@ final class ContentViewModel: ObservableObject {
             let tokenKey = TokenKey.sortKey(token)
             let idxKey = limitIndexKey(index)
             let value = normalized[tokenKey] ?? normalized[idxKey] ?? defaultLimitMinutes
+            normalized[tokenKey] = value
+            normalized[idxKey] = value
+        }
+        return normalized
+    }
+
+    private func normalizedContinuousAlertLimitsForSelection() -> [String: Int] {
+        var normalized = continuousAlertLimits
+        let tokens = Array(selection.applicationTokens)
+            .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
+        for (index, token) in tokens.enumerated() {
+            let tokenKey = TokenKey.sortKey(token)
+            let idxKey = limitIndexKey(index)
+            let value = max(normalized[tokenKey] ?? normalized[idxKey] ?? 0, 0)
             normalized[tokenKey] = value
             normalized[idxKey] = value
         }
@@ -759,6 +887,38 @@ final class ContentViewModel: ObservableObject {
         updateAuthorizationStatus()
         refreshPermissionErrorState()
         return authorized
+    }
+
+    private func ensureNotificationAuthorizationIfNeeded(hasEnabledContinuousAlert: Bool) async {
+        guard hasEnabledContinuousAlert else {
+            await refreshNotificationAuthorizationStatus()
+            return
+        }
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            notificationAuthorized = true
+        case .notDetermined:
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            notificationAuthorized = granted
+        case .denied:
+            notificationAuthorized = false
+        @unknown default:
+            notificationAuthorized = false
+        }
+    }
+
+    private func refreshNotificationAuthorizationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            notificationAuthorized = true
+        case .notDetermined, .denied:
+            notificationAuthorized = false
+        @unknown default:
+            notificationAuthorized = false
+        }
     }
 
     private func updateAuthorizationStatus() {
@@ -901,6 +1061,7 @@ struct ContentView: View {
     @State private var showEdit = false
     @State private var editingTokenKey: String? = nil
     @State private var draftLimitMinutes: Int = 0
+    @State private var draftContinuousAlertMinutes: Int = 0
 
     var body: some View {
         NavigationStack {
@@ -952,6 +1113,7 @@ struct ContentView: View {
     private var setupView: some View {
         VStack(spacing: 16) {
             Text("Screen Time許可: \(viewModel.authorized ? "OK" : "未")")
+            Text("通知許可: \(viewModel.notificationAuthorized ? "OK" : "未")")
             Text("選択アプリ数: \(viewModel.selection.applicationTokens.count)")
             statusBadge
             GroupBox("監視状態") {
@@ -980,7 +1142,7 @@ struct ContentView: View {
             }
             if !viewModel.selection.applicationTokens.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("選択アプリごとの上限")
+                    Text("選択アプリごとの制限")
                         .font(.headline)
                     let tokens = Array(viewModel.selection.applicationTokens)
                         .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
@@ -991,42 +1153,70 @@ struct ContentView: View {
                         let index = entry.index
                         let tokenKey = entry.tokenKey
                         let currentLimit = viewModel.limitMinutes(for: tokenKey)
+                        let currentContinuousAlertLimit = viewModel.continuousAlertLimitMinutes(for: tokenKey)
                         let isEditing = editingTokenKey == tokenKey
                         VStack(alignment: .leading, spacing: 8) {
                             Text("アプリ \(index + 1)")
                                 .font(.subheadline)
                             if isEditing {
-                                HStack(spacing: 8) {
-                                    ForEach([15, 30, 60], id: \.self) { value in
-                                        Button {
-                                            draftLimitMinutes = value
-                                            viewModel.updateAppLimit(tokenKey: tokenKey, value: value)
-                                        } label: {
-                                            Text("\(value)分")
-                                                .frame(minWidth: 44, minHeight: 32)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(spacing: 8) {
+                                        Text("日次上限")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        ForEach([15, 30, 60], id: \.self) { value in
+                                            Button {
+                                                draftLimitMinutes = value
+                                                viewModel.updateAppLimit(tokenKey: tokenKey, value: value)
+                                            } label: {
+                                                Text("\(value)分")
+                                                    .frame(minWidth: 44, minHeight: 32)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .background(draftLimitMinutes == value ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.15))
+                                            .foregroundColor(draftLimitMinutes == value ? .accentColor : .primary)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                    .stroke(draftLimitMinutes == value ? Color.accentColor : Color.gray.opacity(0.4), lineWidth: 1)
+                                            )
+                                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                         }
-                                        .buttonStyle(.plain)
-                                        .background(draftLimitMinutes == value ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.15))
-                                        .foregroundColor(draftLimitMinutes == value ? .accentColor : .primary)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .stroke(draftLimitMinutes == value ? Color.accentColor : Color.gray.opacity(0.4), lineWidth: 1)
-                                        )
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    }
-                                    Picker("上限", selection: $draftLimitMinutes) {
-                                        ForEach(1...300, id: \.self) { minutes in
-                                            Text("\(minutes)分").tag(minutes)
+                                        Picker("上限", selection: $draftLimitMinutes) {
+                                            ForEach(1...300, id: \.self) { minutes in
+                                                Text("\(minutes)分").tag(minutes)
+                                            }
                                         }
+                                        .pickerStyle(.menu)
                                     }
-                                    .pickerStyle(.menu)
+                                    HStack(spacing: 8) {
+                                        Text("連続通知")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Picker("連続通知", selection: $draftContinuousAlertMinutes) {
+                                            ForEach([0, 5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
+                                                if minutes == 0 {
+                                                    Text("OFF").tag(minutes)
+                                                } else {
+                                                    Text("\(minutes)分").tag(minutes)
+                                                }
+                                            }
+                                        }
+                                        .pickerStyle(.menu)
+                                    }
                                 }
                                 .onChange(of: draftLimitMinutes) { newValue in
                                     guard editingTokenKey == tokenKey else { return }
                                     viewModel.updateAppLimit(tokenKey: tokenKey, value: newValue)
                                 }
+                                .onChange(of: draftContinuousAlertMinutes) { newValue in
+                                    guard editingTokenKey == tokenKey else { return }
+                                    viewModel.updateContinuousAlertLimit(tokenKey: tokenKey, value: newValue)
+                                }
                             } else {
                                 Text("上限: \(currentLimit)分")
+                                    .foregroundColor(.secondary)
+                                    .font(.subheadline)
+                                Text("連続通知: \(viewModel.continuousAlertDisplayText(for: tokenKey))")
                                     .foregroundColor(.secondary)
                                     .font(.subheadline)
                             }
@@ -1036,6 +1226,7 @@ struct ContentView: View {
                         .onTapGesture {
                             editingTokenKey = tokenKey
                             draftLimitMinutes = currentLimit
+                            draftContinuousAlertMinutes = currentContinuousAlertLimit
                         }
                     }
                 }
@@ -1080,6 +1271,12 @@ struct ContentView: View {
 
             if let message = viewModel.activeErrorMessage() {
                 Text(message)
+                    .foregroundColor(.red)
+                    .font(.footnote)
+            }
+            if !viewModel.notificationAuthorized &&
+                viewModel.continuousAlertLimits.values.contains(where: { $0 > 0 }) {
+                Text("連続使用通知を使うには通知の許可が必要です")
                     .foregroundColor(.red)
                     .font(.footnote)
             }
@@ -1144,6 +1341,9 @@ struct SettingsSummaryView: View {
                             VStack(alignment: .leading) {
                                 Text("アプリ \(entry.index + 1)")
                                 Text("上限: \(viewModel.limitMinutes(for: entry.tokenKey))分")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text("連続通知: \(viewModel.continuousAlertDisplayText(for: entry.tokenKey))")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -1230,8 +1430,11 @@ struct AppDetailView: View {
             Text(title)
                 .font(.title2)
             Text("上限: \(viewModel.limitMinutes(for: tokenKey))分")
+            Text("連続通知: \(viewModel.continuousAlertDisplayText(for: tokenKey))")
             Text("残り: \(formatRemaining(viewModel.remainingMinutes(for: tokenKey)))")
                 .font(.headline)
+            Text("現在の連続使用: \(viewModel.continuousUsageStreakMinutes(for: tokenKey))分")
+                .foregroundColor(.secondary)
             Text(viewModel.isBlocked(tokenKey: tokenKey) ? "制限中" : "使用可能")
                 .foregroundColor(viewModel.isBlocked(tokenKey: tokenKey) ? .red : .green)
             Spacer()

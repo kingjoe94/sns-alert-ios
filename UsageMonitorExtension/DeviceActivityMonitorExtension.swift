@@ -11,6 +11,11 @@ private let orderedTokensKey = "orderedTokens"
 private let usageKey = "usageMinutes"
 private let usageUpdatedAtKey = "usageUpdatedAt"
 private let appLimitsKey = "appLimits"
+private let continuousAlertLimitsKey = "continuousAlertLimits"
+private let continuousUsageKey = "continuousUsageMinutes"
+private let continuousLastEventAtKey = "continuousLastEventAt"
+private let continuousLastNotifiedAtKey = "continuousLastNotifiedAt"
+private let continuousActiveIndexKey = "continuousActiveIndex"
 private let lastResetKey = "lastResetAt"
 private let usageEventAcceptedAtKey = "usageEventAcceptedAt"
 private let resetGraceSeconds: TimeInterval = 30
@@ -18,6 +23,7 @@ private let debugLogsKey = "debugLogs"
 private let defaultLimitMinutes = 30
 private let unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 180
 private let usageEventMinIntervalSeconds: TimeInterval = 50
+private let continuousSessionMaxGapSeconds: TimeInterval = 120
 private let lastRearmAtKey = "lastRearmAt"
 private let monitorName = DeviceActivityName("daily-monitor")
 
@@ -97,6 +103,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         defaults.set(nil, forKey: usageKey)
         defaults.removeObject(forKey: usageUpdatedAtKey)
         defaults.removeObject(forKey: usageEventAcceptedAtKey)
+        clearContinuousUsageState(defaults: defaults)
         defaults.set(anchor, forKey: lastResetKey)
         appendDebugLog("intervalDidStart: reset実行(resetAnchor=\(anchor), lastResetBefore=\(String(describing: lastReset)))")
     }
@@ -132,6 +139,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         saveUsageMinutes(usage, defaults: defaults)
         defaults.set(now, forKey: usageUpdatedAtKey)
         appendDebugLog("使用時間を同期: idx=\(index), used=\(updated), limit=\(limit)", now: now)
+        updateContinuousUsageAndNotify(token: token, index: index, now: now, defaults: defaults)
 
         if updated >= limit {
             applyBlock(for: token, eventName: event.rawValue, now: now)
@@ -223,6 +231,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         let usageUpdatedAt = defaults.object(forKey: usageUpdatedAtKey) as? Date
         let thresholdEvaluationStart = defaults.object(forKey: lastRearmAtKey) as? Date
+        let usageEventAcceptedAt = loadUsageEventAcceptedAt(defaults: defaults)["idx_\(index)"]
+        let hasUsageSignal = (usageEventAcceptedAt != nil)
 
         let tokenKey = tokenSortKey(token)
         var usedMinutes: Int?
@@ -242,6 +252,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             lastReset: lastReset,
             thresholdEvaluationStart: thresholdEvaluationStart,
             usageUpdatedAt: usageUpdatedAt,
+            hasUsageSignal: hasUsageSignal,
             usedMinutes: usedMinutes,
             limitMinutes: limitMinutes,
             unsyncedThresholdIgnoreWindowSeconds: unsyncedThresholdIgnoreWindowSeconds
@@ -356,6 +367,14 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         return limits
     }
 
+    private func loadContinuousAlertLimits(defaults: UserDefaults) -> [String: Int] {
+        guard let data = defaults.data(forKey: continuousAlertLimitsKey),
+              let limits = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            return [:]
+        }
+        return limits
+    }
+
     private func loadUsageMinutes(defaults: UserDefaults) -> [String: Int] {
         guard let data = defaults.data(forKey: usageKey),
               let usage = try? JSONDecoder().decode([String: Int].self, from: data) else {
@@ -406,6 +425,41 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
     }
 
+    private func loadContinuousUsageMinutes(defaults: UserDefaults) -> [String: Int] {
+        guard let data = defaults.data(forKey: continuousUsageKey),
+              let usage = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            return [:]
+        }
+        return usage
+    }
+
+    private func saveContinuousUsageMinutes(_ usage: [String: Int], defaults: UserDefaults) {
+        if let encoded = try? JSONEncoder().encode(usage) {
+            defaults.set(encoded, forKey: continuousUsageKey)
+        }
+    }
+
+    private func loadContinuousLastNotifiedAt(defaults: UserDefaults) -> [String: Date] {
+        guard let data = defaults.data(forKey: continuousLastNotifiedAtKey),
+              let notified = try? JSONDecoder().decode([String: Date].self, from: data) else {
+            return [:]
+        }
+        return notified
+    }
+
+    private func saveContinuousLastNotifiedAt(_ notified: [String: Date], defaults: UserDefaults) {
+        if let encoded = try? JSONEncoder().encode(notified) {
+            defaults.set(encoded, forKey: continuousLastNotifiedAtKey)
+        }
+    }
+
+    private func clearContinuousUsageState(defaults: UserDefaults) {
+        defaults.removeObject(forKey: continuousUsageKey)
+        defaults.removeObject(forKey: continuousLastEventAtKey)
+        defaults.removeObject(forKey: continuousLastNotifiedAtKey)
+        defaults.removeObject(forKey: continuousActiveIndexKey)
+    }
+
     private func limitMinutesForToken(tokenKey: String, index: Int, limits: [String: Int]) -> Int {
         let idxKey = "idx_\(index)"
         return limits[idxKey] ?? limits[tokenKey] ?? defaultLimitMinutes
@@ -414,6 +468,90 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     private func saveOrderedTokens(_ tokens: [Token<Application>], defaults: UserDefaults) {
         let items = tokens.compactMap { try? JSONEncoder().encode($0) }
         defaults.set(items, forKey: orderedTokensKey)
+    }
+
+    private func updateContinuousUsageAndNotify(
+        token: Token<Application>,
+        index: Int,
+        now: Date,
+        defaults: UserDefaults
+    ) {
+        let idxKey = "idx_\(index)"
+        let tokenKey = tokenSortKey(token)
+        var usage = loadContinuousUsageMinutes(defaults: defaults)
+        var notifiedAt = loadContinuousLastNotifiedAt(defaults: defaults)
+        let activeIndex = defaults.object(forKey: continuousActiveIndexKey) as? Int
+        let lastEventAt = defaults.object(forKey: continuousLastEventAtKey) as? Date
+
+        let shouldReset = MonitoringLogic.shouldResetContinuousSession(
+            eventIndex: index,
+            activeIndex: activeIndex,
+            lastEventAt: lastEventAt,
+            now: now,
+            maxGapSeconds: continuousSessionMaxGapSeconds
+        )
+        if shouldReset {
+            if let activeIndex, activeIndex != index {
+                let previousIdxKey = "idx_\(activeIndex)"
+                usage[previousIdxKey] = 0
+                notifiedAt.removeValue(forKey: previousIdxKey)
+                if let tokens = loadTokensForMonitoring(), tokens.indices.contains(activeIndex) {
+                    let previousTokenKey = tokenSortKey(tokens[activeIndex])
+                    usage[previousTokenKey] = 0
+                    notifiedAt.removeValue(forKey: previousTokenKey)
+                }
+            }
+            usage[idxKey] = 0
+            usage[tokenKey] = 0
+            notifiedAt.removeValue(forKey: idxKey)
+            notifiedAt.removeValue(forKey: tokenKey)
+            if let activeIndex, activeIndex != index {
+                appendDebugLog("連続使用セッション切替: from=\(activeIndex), to=\(index)", now: now)
+            } else {
+                appendDebugLog("連続使用セッションをリセット: idx=\(index)", now: now)
+            }
+        }
+
+        let previous = max(usage[idxKey] ?? 0, usage[tokenKey] ?? 0)
+        let streak = previous + 1
+        usage[idxKey] = streak
+        usage[tokenKey] = streak
+        saveContinuousUsageMinutes(usage, defaults: defaults)
+        defaults.set(now, forKey: continuousLastEventAtKey)
+        defaults.set(index, forKey: continuousActiveIndexKey)
+
+        let limits = loadContinuousAlertLimits(defaults: defaults)
+        let threshold = max(limits[idxKey] ?? limits[tokenKey] ?? 0, 0)
+        let lastNotified = notifiedAt[idxKey] ?? notifiedAt[tokenKey]
+        let shouldNotify = MonitoringLogic.shouldNotifyForContinuousUsage(
+            streakMinutes: streak,
+            thresholdMinutes: threshold,
+            lastNotifiedAt: lastNotified,
+            now: now
+        )
+
+        if shouldNotify {
+            postContinuousUsageNotification(index: index, streakMinutes: streak, thresholdMinutes: threshold)
+            notifiedAt[idxKey] = now
+            notifiedAt[tokenKey] = now
+            appendDebugLog("連続使用通知を送信: idx=\(index), streak=\(streak), threshold=\(threshold)", now: now)
+        }
+
+        saveContinuousLastNotifiedAt(notifiedAt, defaults: defaults)
+    }
+
+    private func postContinuousUsageNotification(index: Int, streakMinutes: Int, thresholdMinutes: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "SNSアラート"
+        content.body = "アプリ\(index + 1)を\(streakMinutes)分連続で使用しています（通知閾値: \(thresholdMinutes)分）"
+        content.sound = .default
+        let identifier = "continuous_idx_\(index)_\(Int(Date().timeIntervalSince1970))"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
+            if let error {
+                self?.appendDebugLog("連続使用通知の送信に失敗: idx=\(index), error=\(error)")
+            }
+        }
     }
 
     private func endComponentsForDailyReset(hour: Int, minute: Int) -> DateComponents {

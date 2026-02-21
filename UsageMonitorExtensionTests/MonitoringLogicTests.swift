@@ -100,6 +100,23 @@ final class MonitoringLogicTests: XCTestCase {
         XCTAssertEqual(reason, .none)
     }
 
+    func testUsageThresholdIgnoreReasonKeepsUnsyncedIgnoreWhenNoUsageSignal() {
+        let calendar = fixedCalendar()
+        let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = reset.addingTimeInterval(400)
+
+        let reason = MonitoringLogic.usageThresholdIgnoreReason(
+            now: now,
+            lastReset: reset,
+            usageUpdatedAt: nil,
+            hasUsageSignal: false,
+            usedMinutes: nil,
+            limitMinutes: 1
+        )
+
+        XCTAssertEqual(reason, .usageNotSynced(elapsedSeconds: 400))
+    }
+
     func testUsageThresholdIgnoreReasonUsesRearmStartForUnsyncedWindow() {
         let calendar = fixedCalendar()
         let reset = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
@@ -225,6 +242,139 @@ final class MonitoringLogicTests: XCTestCase {
                 now: now,
                 lastAcceptedAt: last,
                 minIntervalSeconds: 50
+            )
+        )
+    }
+
+    func testShouldResetContinuousSessionReturnsTrueWhenNoActiveIndex() {
+        let calendar = fixedCalendar()
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 3, calendar: calendar)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldResetContinuousSession(
+                eventIndex: 0,
+                activeIndex: nil,
+                lastEventAt: nil,
+                now: now
+            )
+        )
+    }
+
+    func testShouldResetContinuousSessionReturnsTrueWhenIndexSwitched() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 2, calendar: calendar)
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 3, calendar: calendar)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldResetContinuousSession(
+                eventIndex: 1,
+                activeIndex: 0,
+                lastEventAt: last,
+                now: now
+            )
+        )
+    }
+
+    func testShouldResetContinuousSessionReturnsFalseWithinGapWindow() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(70)
+
+        XCTAssertFalse(
+            MonitoringLogic.shouldResetContinuousSession(
+                eventIndex: 0,
+                activeIndex: 0,
+                lastEventAt: last,
+                now: now,
+                maxGapSeconds: 120
+            )
+        )
+    }
+
+    func testShouldResetContinuousSessionReturnsTrueWhenGapExceeded() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(121)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldResetContinuousSession(
+                eventIndex: 0,
+                activeIndex: 0,
+                lastEventAt: last,
+                now: now,
+                maxGapSeconds: 120
+            )
+        )
+    }
+
+    func testShouldNotifyForContinuousUsageReturnsFalseWhenThresholdOff() {
+        let calendar = fixedCalendar()
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+
+        XCTAssertFalse(
+            MonitoringLogic.shouldNotifyForContinuousUsage(
+                streakMinutes: 10,
+                thresholdMinutes: 0,
+                lastNotifiedAt: nil,
+                now: now
+            )
+        )
+    }
+
+    func testShouldNotifyForContinuousUsageReturnsFalseBeforeThreshold() {
+        let calendar = fixedCalendar()
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+
+        XCTAssertFalse(
+            MonitoringLogic.shouldNotifyForContinuousUsage(
+                streakMinutes: 9,
+                thresholdMinutes: 10,
+                lastNotifiedAt: nil,
+                now: now
+            )
+        )
+    }
+
+    func testShouldNotifyForContinuousUsageReturnsTrueAtThresholdWithoutLastNotification() {
+        let calendar = fixedCalendar()
+        let now = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldNotifyForContinuousUsage(
+                streakMinutes: 10,
+                thresholdMinutes: 10,
+                lastNotifiedAt: nil,
+                now: now
+            )
+        )
+    }
+
+    func testShouldNotifyForContinuousUsageReturnsFalseInsideCooldown() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(9 * 60)
+
+        XCTAssertFalse(
+            MonitoringLogic.shouldNotifyForContinuousUsage(
+                streakMinutes: 20,
+                thresholdMinutes: 10,
+                lastNotifiedAt: last,
+                now: now
+            )
+        )
+    }
+
+    func testShouldNotifyForContinuousUsageReturnsTrueAfterCooldown() {
+        let calendar = fixedCalendar()
+        let last = makeDate(year: 2026, month: 2, day: 10, hour: 10, minute: 0, calendar: calendar)
+        let now = last.addingTimeInterval(10 * 60)
+
+        XCTAssertTrue(
+            MonitoringLogic.shouldNotifyForContinuousUsage(
+                streakMinutes: 20,
+                thresholdMinutes: 10,
+                lastNotifiedAt: last,
+                now: now
             )
         )
     }

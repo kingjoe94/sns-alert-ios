@@ -46,7 +46,7 @@ Quick Smoke pass criteria:
 
 Run this before release or after monitoring/reset logic changes:
 
-- `TC-01` to `TC-16` all cases in order.
+- `TC-01` to `TC-19` all cases in order.
 
 ## 1. Core Flow (Start -> Block -> Reset -> Re-block)
 
@@ -235,11 +235,50 @@ Expected:
 - No immediate block occurs right after `監視開始`.
 - Remaining time starts from configured limit value.
 
+## 3.5 Continuous Usage Notification
+
+### TC-17 Continuous notification by app threshold
+
+Steps:
+1. Stop monitoring.
+2. Set App A `連続通知` threshold to 5 min, App B to `OFF`.
+3. Start monitoring.
+4. Keep using only App A for 5+ minutes continuously.
+
+Expected:
+- A local notification appears for App A around the 5-minute mark.
+- Debug log includes `連続使用通知を送信: idx=0` (or mapped App A index).
+- App B does not trigger continuous notification.
+
+### TC-18 Session reset on app switch
+
+Steps:
+1. Keep App A `連続通知` threshold at 5 min.
+2. Use App A for about 3 minutes.
+3. Switch to App B and use App B for >= 1 minute.
+4. Return to App A and use App A for about 3 minutes.
+
+Expected:
+- App switch creates a new App A continuous session.
+- No App A continuous notification is triggered by only 3 + 3 minute split usage.
+- Debug log includes `連続使用セッション切替`.
+
+### TC-19 Cooldown equals threshold
+
+Steps:
+1. Set App A `連続通知` threshold to 5 min.
+2. Use App A continuously for 11+ minutes.
+
+Expected:
+- First notification appears around 5 minutes.
+- Next notification appears around 10 minutes (not before).
+- Debug log shows multiple `連続使用通知を送信` for App A index with spacing >= 5 minutes.
+
 ## 4. Pass Criteria
 
 Release candidate is acceptable only if:
 
-- TC-01 to TC-16 all pass.
+- TC-01 to TC-19 all pass.
 - No reproduction of:
   - reset-time shift to next day while still blocked
   - post-reset permanent no-block state
@@ -272,6 +311,9 @@ TC-13: PASS/FAIL
 TC-14: PASS/FAIL
 TC-15: PASS/FAIL
 TC-16: PASS/FAIL
+TC-17: PASS/FAIL
+TC-18: PASS/FAIL
+TC-19: PASS/FAIL
 
 Notes:
 - <debug log summary>
@@ -304,11 +346,15 @@ TC-12: MANUAL_PENDING
 TC-13: MANUAL_PENDING
 TC-14: MANUAL_PENDING
 TC-15: MANUAL_PENDING
+TC-16: MANUAL_PENDING
+TC-17: MANUAL_PENDING
+TC-18: MANUAL_PENDING
+TC-19: MANUAL_PENDING
 
 Notes:
 - GitHub Actions: latest successful run remained iOS Build Check #5 (logic-test, build)
 - Local unit tests: `swift test --scratch-path .build/.swiftpm` passed
-- Executed 9 tests, 0 failures
+- Executed 23 tests, 0 failures (latest local run)
 
 Result: AUTOMATED_PASS / MANUAL_PENDING
 ```
@@ -337,6 +383,10 @@ TC-12: NOT_RUN
 TC-13: NOT_RUN
 TC-14: NOT_RUN
 TC-15: NOT_RUN
+TC-16: NOT_RUN
+TC-17: NOT_RUN
+TC-18: NOT_RUN
+TC-19: NOT_RUN
 
 Notes:
 - Prior symptom ("limit reached but no block after reset") was observed before this fix.
@@ -358,6 +408,9 @@ Reset time setting: test-time dependent
 TC-14: PASS
 TC-15: PASS
 TC-16: PASS
+TC-17: NOT_RUN
+TC-18: NOT_RUN
+TC-19: NOT_RUN
 
 Notes:
 - Immediate block on monitoring start no longer reproduced.
@@ -365,4 +418,61 @@ Notes:
 - After crossing reset boundary while stopped, remaining time resets on next start (expected behavior).
 
 Result: PASS (focused scope only)
+```
+
+## 9. Latest Recorded Device Run (Continuous Notification)
+
+```text
+Run type: Focused Manual (continuous-notification behavior)
+Date: 2026-02-20
+Build: working tree (unreleased) / branch=main
+Device: iPhone (real device) / iOS version not recorded
+Reset time setting: test-time dependent
+
+TC-17: PASS
+TC-18: PASS
+TC-19: PASS
+
+Notes:
+- Per-app threshold notification triggered as expected.
+- Session reset behavior on app switch matched expected behavior.
+- Cooldown matched threshold interval.
+
+Result: PASS (focused scope only)
+```
+
+## 10. Latest Recorded Device Run (Full Regression)
+
+```text
+Run type: Full Regression
+Date: 2026-02-22 07:20 JST
+Build: working tree (unreleased) / branch=main
+Device: iPhone (real device) / iOS version not recorded
+Reset time setting: test-time dependent
+
+TC-01: PASS
+TC-02: PASS
+TC-03: PASS
+TC-04: PASS
+TC-05: PASS
+TC-06: PASS
+TC-07: PASS
+TC-08: PASS
+TC-09: PASS
+TC-10: PASS
+TC-11: PASS
+TC-12: PASS
+TC-13: PASS
+TC-14: PASS
+TC-15: PASS
+TC-16: PASS
+TC-17: PASS
+TC-18: PASS
+TC-19: PASS
+
+Notes:
+- TC-14 was rechecked with background -> foreground transition, and remaining time updated after app returned to foreground.
+- No reproduction of reset-time drift, post-reset no-block, or immediate false block after reset.
+
+Result: PASS
 ```

@@ -46,6 +46,7 @@ enum MonitoringLogic {
         lastReset: Date?,
         thresholdEvaluationStart: Date? = nil,
         usageUpdatedAt: Date?,
+        hasUsageSignal: Bool = true,
         usedMinutes: Int?,
         limitMinutes: Int,
         unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 180,
@@ -56,6 +57,12 @@ enum MonitoringLogic {
         let thresholdStart = max(lastReset, thresholdEvaluationStart ?? lastReset)
         let elapsedFromThresholdStart = now.timeIntervalSince(thresholdStart)
         let syncedDelay = usageUpdatedAt?.timeIntervalSince(thresholdStart)
+
+        // No report sync and no minute-event signal means we have no evidence of
+        // post-reset usage for this app; keep ignoring threshold-only callbacks.
+        if syncedDelay == nil && !hasUsageSignal {
+            return .usageNotSynced(elapsedSeconds: max(Int(elapsedFromThresholdStart), 0))
+        }
 
         // Ignore brief post-reset/rearm races, then fall back to threshold-only behavior.
         if syncedDelay == nil || syncedDelay! < minSyncedUsageDelaySeconds {
@@ -83,5 +90,35 @@ enum MonitoringLogic {
         let delta = now.timeIntervalSince(lastAcceptedAt)
         guard delta >= 0 else { return false }
         return delta >= minIntervalSeconds
+    }
+
+    static func shouldResetContinuousSession(
+        eventIndex: Int,
+        activeIndex: Int?,
+        lastEventAt: Date?,
+        now: Date,
+        maxGapSeconds: TimeInterval = 120
+    ) -> Bool {
+        guard let activeIndex else { return true }
+        guard activeIndex == eventIndex else { return true }
+        guard let lastEventAt else { return true }
+        let delta = now.timeIntervalSince(lastEventAt)
+        guard delta >= 0 else { return true }
+        return delta > maxGapSeconds
+    }
+
+    static func shouldNotifyForContinuousUsage(
+        streakMinutes: Int,
+        thresholdMinutes: Int,
+        lastNotifiedAt: Date?,
+        now: Date
+    ) -> Bool {
+        guard thresholdMinutes > 0 else { return false }
+        guard streakMinutes >= thresholdMinutes else { return false }
+        guard let lastNotifiedAt else { return true }
+        let delta = now.timeIntervalSince(lastNotifiedAt)
+        guard delta >= 0 else { return true }
+        let cooldownSeconds = TimeInterval(thresholdMinutes * 60)
+        return delta >= cooldownSeconds
     }
 }

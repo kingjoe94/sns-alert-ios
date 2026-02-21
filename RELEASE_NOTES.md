@@ -1,5 +1,32 @@
 # Release Notes
 
+## Unreleased (2026-02-19)
+
+### Included
+- Added per-app continuous-usage notification settings (`連続通知`) with default `OFF`.
+- Implemented monitor-side continuous session tracking:
+  - updates streak on each `usage_idx_*` minute event
+  - resets session on app switch, long gap (>120s), reset, and monitoring stop/start
+  - sends local notification when per-app threshold is reached
+- Set notification cooldown to the same value as each app's threshold.
+- Fixed false post-reset blocking risk in `limit_idx_*` handling by keeping threshold ignores active until a real usage signal is observed.
+- Added logic tests for:
+  - continuous session reset decision
+  - continuous notification decision with cooldown
+  - threshold ignore behavior without usage signal
+- Expanded docs:
+  - `SPEC.md`: added `連続使用通知`
+  - `REGRESSION_TEST.md`: added `TC-17` / `TC-18` / `TC-19`
+
+### Validation Snapshot
+- Local unit tests: `swift test --scratch-path .build/.swiftpm` passed (24 tests, 0 failures)
+- Build check: `xcodebuild -project SNSalert.xcodeproj -target SNSalert -configuration Debug -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build` passed
+- Real-device focused validation: `TC-17` / `TC-18` / `TC-19` passed (2026-02-20)
+- Real-device full regression: `TC-01` to `TC-19` passed (2026-02-22)
+
+### Remaining Validation
+- Full manual regression (`TC-01` to `TC-19`) completed on 2026-02-22.
+
 ## v0.1.3 (2026-02-17)
 
 ### Included
