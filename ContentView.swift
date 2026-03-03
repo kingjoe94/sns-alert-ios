@@ -1036,6 +1036,11 @@ final class ContentViewModel: ObservableObject {
         store.saveOnboardingCompleted(true)
     }
 
+    func resetOnboarding() {
+        onboardingCompleted = false
+        store.saveOnboardingCompleted(false)
+    }
+
     func refreshPermissions() async {
         updateAuthorizationStatus()
         await refreshNotificationAuthorizationStatus()
@@ -1158,7 +1163,9 @@ struct ContentView: View {
     private var setupView: some View {
         ScrollView {
             VStack(spacing: 20) {
-                permissionStatusCard
+                if !viewModel.authorized || !viewModel.notificationAuthorized {
+                    permissionStatusCard
+                }
                 appSelectionCard
                 resetTimeCard
                 Button {
@@ -1660,6 +1667,7 @@ struct SettingsSummaryView: View {
                     : "同期失敗シミュレーション: OFF"
             ) { viewModel.debugToggleSyncFailure() }
             Button("デバッグログをクリア") { viewModel.clearDebugLogs() }
+            Button("オンボーディングをリセット") { viewModel.resetOnboarding() }
             Divider()
             Text("DEBUGログ")
                 .font(.caption.bold())
@@ -1917,40 +1925,59 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private var actionArea: some View {
-        switch step {
-        case 0:
-            primaryButton("はじめる") { advance() }
+        VStack(spacing: 12) {
+            switch step {
+            case 0:
+                primaryButton("はじめる") { advance() }
 
-        case 1:
-            VStack(spacing: 12) {
-                primaryButton("Screen Time を許可する") {
-                    Task {
-                        try? await AuthorizationCenter.shared
-                            .requestAuthorization(for: .individual)
-                        await viewModel.refreshPermissions()
-                        advance()
+            case 1:
+                if viewModel.authorized {
+                    primaryButton("次へ") { advance() }
+                } else {
+                    primaryButton("Screen Time を許可する") {
+                        Task {
+                            try? await AuthorizationCenter.shared
+                                .requestAuthorization(for: .individual)
+                            await viewModel.refreshPermissions()
+                            advance()
+                        }
                     }
+                    skipButton("スキップ") { advance() }
                 }
-                skipButton("スキップ") { advance() }
+
+            case 2:
+                if viewModel.notificationAuthorized {
+                    primaryButton("完了") { viewModel.completeOnboarding() }
+                } else {
+                    primaryButton("通知を許可する") {
+                        Task {
+                            _ = try? await UNUserNotificationCenter.current()
+                                .requestAuthorization(options: [.alert, .sound])
+                            await viewModel.refreshPermissions()
+                            viewModel.completeOnboarding()
+                        }
+                    }
+                    skipButton("スキップ") { viewModel.completeOnboarding() }
+                }
+
+            default:
+                EmptyView()
             }
 
-        case 2:
-            VStack(spacing: 12) {
-                primaryButton("通知を許可する") {
-                    Task {
-                        _ = try? await UNUserNotificationCenter.current()
-                            .requestAuthorization(options: [.alert, .sound])
-                        await viewModel.refreshPermissions()
-                        viewModel.completeOnboarding()
+            // 戻るボタン（Step 1 以降に表示）
+            if step > 0 {
+                Button {
+                    slideDirection = -1
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        step = max(step - 1, 0)
                     }
+                } label: {
+                    Label("戻る", systemImage: "chevron.left")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                skipButton("スキップ") {
-                    viewModel.completeOnboarding()
-                }
+                .padding(.top, 4)
             }
-
-        default:
-            EmptyView()
         }
     }
 
