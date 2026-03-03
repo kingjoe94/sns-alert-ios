@@ -22,6 +22,11 @@ private enum TokenKey {
     }
 }
 
+private func appColor(forIndex index: Int) -> Color {
+    let hues: [Double] = [0.58, 0.95, 0.13, 0.35, 0.72, 0.02, 0.48, 0.85]
+    return Color(hue: hues[index % hues.count], saturation: 0.6, brightness: 0.85)
+}
+
 final class AppStore {
     private let defaults: UserDefaults
     private let selectionKey = "savedSelection"
@@ -1066,18 +1071,28 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .topLeading) {
+                let isShowingSummary = viewModel.setupCompleted && viewModel.isMonitoring && !showEdit
                 Group {
-                    if viewModel.setupCompleted && viewModel.isMonitoring && !showEdit {
+                    if isShowingSummary {
                         SettingsSummaryView(
                             viewModel: viewModel,
                             onEdit: {
                                 showEdit = true
                             }
                         )
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                     } else {
                         setupView
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .move(edge: .trailing).combined(with: .opacity)
+                            ))
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: isShowingSummary)
                 UsageReportHostView(
                     refreshToken: viewModel.reportRefresh,
                     selection: viewModel.selection,
@@ -1111,129 +1126,240 @@ struct ContentView: View {
     }
 
     private var setupView: some View {
-        VStack(spacing: 16) {
-            Text("Screen Time許可: \(viewModel.authorized ? "OK" : "未")")
-            Text("通知許可: \(viewModel.notificationAuthorized ? "OK" : "未")")
-            Text("選択アプリ数: \(viewModel.selection.applicationTokens.count)")
-            statusBadge
-            GroupBox("監視状態") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("状態")
-                        Spacer()
-                        Text(viewModel.monitoringStatusText())
-                            .foregroundColor(viewModel.isMonitoring ? .green : .secondary)
+        ScrollView {
+            VStack(spacing: 20) {
+                permissionStatusCard
+                appSelectionCard
+                resetTimeCard
+                Button {
+                    viewModel.startMonitoring()
+                } label: {
+                    Label(
+                        viewModel.isMonitoring ? "監視中" : "監視を開始",
+                        systemImage: viewModel.isMonitoring ? "shield.fill" : "shield"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.isMonitoring ? .green : .blue)
+                .disabled(viewModel.isMonitoring)
+
+                if viewModel.isMonitoring {
+                    Button {
+                        viewModel.stopMonitoring()
+                    } label: {
+                        Label("停止", systemImage: "stop.circle")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
                     }
-                    HStack {
-                        Text("最終同期")
-                        Spacer()
-                        Text(viewModel.lastSyncDisplayText())
-                            .foregroundColor(.secondary)
-                            .font(.footnote)
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+
+                setupErrorAndWarningSection
+            }
+            .padding()
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var permissionStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("権限")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            HStack {
+                Label(
+                    "Screen Time",
+                    systemImage: viewModel.authorized ? "checkmark.shield.fill" : "exclamationmark.shield"
+                )
+                .foregroundStyle(viewModel.authorized ? .green : .orange)
+                Spacer()
+                Text(viewModel.authorized ? "許可済み" : "未許可")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Divider()
+            HStack {
+                Label(
+                    "通知",
+                    systemImage: viewModel.notificationAuthorized ? "bell.fill" : "bell.slash"
+                )
+                .foregroundStyle(viewModel.notificationAuthorized ? .green : .secondary)
+                Spacer()
+                Text(viewModel.notificationAuthorized ? "許可済み" : "未設定")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var appSelectionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("監視するアプリ")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            let tokens = Array(viewModel.selection.applicationTokens)
+                .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
+            if tokens.isEmpty {
+                Label("未選択", systemImage: "apps.iphone")
+                    .foregroundStyle(.secondary)
+            } else {
+                let tokenEntries = tokens.enumerated().map { index, token in
+                    (index: index, tokenKey: TokenKey.sortKey(token))
+                }
+                ForEach(Array(tokenEntries.enumerated()), id: \.offset) { listIndex, entry in
+                    if listIndex > 0 {
+                        Divider().padding(.leading, 46)
                     }
-                    HStack {
-                        Text("次回リセット")
-                        Spacer()
-                        Text(viewModel.nextResetDisplayText())
-                            .foregroundColor(.secondary)
-                            .font(.footnote)
+                    appSetupRow(index: entry.index, tokenKey: entry.tokenKey)
+                }
+            }
+            Button {
+                showPicker = true
+            } label: {
+                Label("アプリを選択", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.isMonitoring)
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func appSetupRow(index: Int, tokenKey: String) -> some View {
+        let isEditing = editingTokenKey == tokenKey
+        let currentLimit = viewModel.limitMinutes(for: tokenKey)
+        let currentContinuousAlertLimit = viewModel.continuousAlertLimitMinutes(for: tokenKey)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(appColor(forIndex: index))
+                    .frame(width: 28, height: 28)
+                    .overlay(
+                        Text("\(index + 1)")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                    )
+                Text("アプリ \(index + 1)")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if !viewModel.isMonitoring {
+                    Image(systemName: isEditing ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !viewModel.isMonitoring else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if editingTokenKey == tokenKey {
+                        editingTokenKey = nil
+                    } else {
+                        editingTokenKey = tokenKey
+                        draftLimitMinutes = currentLimit
+                        draftContinuousAlertMinutes = currentContinuousAlertLimit
                     }
                 }
             }
-            if !viewModel.selection.applicationTokens.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("選択アプリごとの制限")
-                        .font(.headline)
-                    let tokens = Array(viewModel.selection.applicationTokens)
-                        .sorted(by: { TokenKey.sortKey($0) < TokenKey.sortKey($1) })
-                    let tokenEntries = tokens.enumerated().map { index, token in
-                        (index: index, tokenKey: TokenKey.sortKey(token))
-                    }
-                    ForEach(tokenEntries, id: \.tokenKey) { entry in
-                        let index = entry.index
-                        let tokenKey = entry.tokenKey
-                        let currentLimit = viewModel.limitMinutes(for: tokenKey)
-                        let currentContinuousAlertLimit = viewModel.continuousAlertLimitMinutes(for: tokenKey)
-                        let isEditing = editingTokenKey == tokenKey
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("アプリ \(index + 1)")
-                                .font(.subheadline)
-                            if isEditing {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack(spacing: 8) {
-                                        Text("日次上限")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                        ForEach([15, 30, 60], id: \.self) { value in
-                                            Button {
-                                                draftLimitMinutes = value
-                                                viewModel.updateAppLimit(tokenKey: tokenKey, value: value)
-                                            } label: {
-                                                Text("\(value)分")
-                                                    .frame(minWidth: 44, minHeight: 32)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .background(draftLimitMinutes == value ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.15))
-                                            .foregroundColor(draftLimitMinutes == value ? .accentColor : .primary)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                    .stroke(draftLimitMinutes == value ? Color.accentColor : Color.gray.opacity(0.4), lineWidth: 1)
-                                            )
-                                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                        }
-                                        Picker("上限", selection: $draftLimitMinutes) {
-                                            ForEach(1...300, id: \.self) { minutes in
-                                                Text("\(minutes)分").tag(minutes)
-                                            }
-                                        }
-                                        .pickerStyle(.menu)
-                                    }
-                                    HStack(spacing: 8) {
-                                        Text("連続通知")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                        Picker("連続通知", selection: $draftContinuousAlertMinutes) {
-                                            ForEach([0, 5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
-                                                if minutes == 0 {
-                                                    Text("OFF").tag(minutes)
-                                                } else {
-                                                    Text("\(minutes)分").tag(minutes)
-                                                }
-                                            }
-                                        }
-                                        .pickerStyle(.menu)
-                                    }
-                                }
-                                .onChange(of: draftLimitMinutes) { newValue in
-                                    guard editingTokenKey == tokenKey else { return }
-                                    viewModel.updateAppLimit(tokenKey: tokenKey, value: newValue)
-                                }
-                                .onChange(of: draftContinuousAlertMinutes) { newValue in
-                                    guard editingTokenKey == tokenKey else { return }
-                                    viewModel.updateContinuousAlertLimit(tokenKey: tokenKey, value: newValue)
-                                }
-                            } else {
-                                Text("上限: \(currentLimit)分")
-                                    .foregroundColor(.secondary)
-                                    .font(.subheadline)
-                                Text("連続通知: \(viewModel.continuousAlertDisplayText(for: tokenKey))")
-                                    .foregroundColor(.secondary)
-                                    .font(.subheadline)
+            if isEditing && !viewModel.isMonitoring {
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text("日次上限")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach([15, 30, 60], id: \.self) { value in
+                            Button {
+                                draftLimitMinutes = value
+                                viewModel.updateAppLimit(tokenKey: tokenKey, value: value)
+                            } label: {
+                                Text("\(value)分")
+                                    .frame(minWidth: 44, minHeight: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .background(
+                                draftLimitMinutes == value
+                                    ? appColor(forIndex: index).opacity(0.2)
+                                    : Color(.systemFill)
+                            )
+                            .foregroundStyle(
+                                draftLimitMinutes == value ? appColor(forIndex: index) : .primary
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(
+                                        draftLimitMinutes == value
+                                            ? appColor(forIndex: index)
+                                            : Color(.systemFill),
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        Picker("上限", selection: $draftLimitMinutes) {
+                            ForEach(1...300, id: \.self) { minutes in
+                                Text("\(minutes)分").tag(minutes)
                             }
                         }
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            editingTokenKey = tokenKey
-                            draftLimitMinutes = currentLimit
-                            draftContinuousAlertMinutes = currentContinuousAlertLimit
+                        .pickerStyle(.menu)
+                    }
+                    HStack(spacing: 8) {
+                        Text("連続通知")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("連続通知", selection: $draftContinuousAlertMinutes) {
+                            ForEach([0, 5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
+                                if minutes == 0 {
+                                    Text("OFF").tag(minutes)
+                                } else {
+                                    Text("\(minutes)分").tag(minutes)
+                                }
+                            }
                         }
+                        .pickerStyle(.menu)
                     }
                 }
+                .onChange(of: draftLimitMinutes) { newValue in
+                    guard editingTokenKey == tokenKey else { return }
+                    viewModel.updateAppLimit(tokenKey: tokenKey, value: newValue)
+                }
+                .onChange(of: draftContinuousAlertMinutes) { newValue in
+                    guard editingTokenKey == tokenKey else { return }
+                    viewModel.updateContinuousAlertLimit(tokenKey: tokenKey, value: newValue)
+                }
+            } else if !isEditing {
+                HStack(spacing: 16) {
+                    Label("\(currentLimit)分", systemImage: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Label(
+                        viewModel.continuousAlertDisplayText(for: tokenKey),
+                        systemImage: "bell"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
             }
+        }
+    }
 
-            HStack(spacing: 12) {
-                Text("リセット時刻")
+    private var resetTimeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("リセット時刻")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.clockwise.circle")
+                    .foregroundStyle(.blue)
                 Picker("時", selection: Binding(
                     get: { viewModel.resetHour },
                     set: { viewModel.updateResetTime(hour: $0, minute: viewModel.resetMinute) }
@@ -1242,8 +1368,12 @@ struct ContentView: View {
                         Text(String(format: "%02d", hour)).tag(hour)
                     }
                 }
-                .pickerStyle(.menu)
-
+                .pickerStyle(.wheel)
+                .frame(width: 60, height: 100)
+                .clipped()
+                Text(":")
+                    .font(.title2.bold())
+                    .foregroundStyle(.secondary)
                 Picker("分", selection: Binding(
                     get: { viewModel.resetMinute },
                     set: { viewModel.updateResetTime(hour: viewModel.resetHour, minute: $0) }
@@ -1252,48 +1382,49 @@ struct ContentView: View {
                         Text(String(format: "%02d", minute)).tag(minute)
                     }
                 }
-                .pickerStyle(.menu)
-            }
-
-            Button("監視するアプリを選ぶ") {
-                showPicker = true
-            }
-
-            Button(viewModel.isMonitoring ? "監視中" : "監視開始") {
-                viewModel.startMonitoring()
-            }
-            .disabled(viewModel.isMonitoring)
-
-            Button("停止") {
-                viewModel.stopMonitoring()
-            }
-            .disabled(!viewModel.isMonitoring)
-
-            if let message = viewModel.activeErrorMessage() {
-                Text(message)
-                    .foregroundColor(.red)
-                    .font(.footnote)
-            }
-            if !viewModel.notificationAuthorized &&
-                viewModel.continuousAlertLimits.values.contains(where: { $0 > 0 }) {
-                Text("連続使用通知を使うには通知の許可が必要です")
-                    .foregroundColor(.red)
-                    .font(.footnote)
+                .pickerStyle(.wheel)
+                .frame(width: 60, height: 100)
+                .clipped()
+                Spacer()
+                Text("次回 \(viewModel.nextResetDisplayText())")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .disabled(viewModel.isMonitoring)
     }
 
-    private var statusBadge: some View {
-        HStack(spacing: 8) {
-            Image(systemName: viewModel.isMonitoring ? "checkmark.circle.fill" : "pause.circle")
-            Text(viewModel.isMonitoring ? "監視中" : "停止中")
+    private var setupErrorAndWarningSection: some View {
+        VStack(spacing: 8) {
+            if let message = viewModel.activeErrorMessage() {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        Color.red.opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+            }
+            if !viewModel.notificationAuthorized &&
+                viewModel.continuousAlertLimits.values.contains(where: { $0 > 0 }) {
+                Label(
+                    "連続使用通知を使うには通知の許可が必要です",
+                    systemImage: "bell.slash"
+                )
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(
+                    Color.orange.opacity(0.1),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+            }
         }
-        .foregroundColor(viewModel.isMonitoring ? .green : .gray)
-        .padding(.vertical, 6)
-        .padding(.horizontal, 12)
-        .background(viewModel.isMonitoring ? Color.green.opacity(0.15) : Color.gray.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -1302,114 +1433,224 @@ struct SettingsSummaryView: View {
     let onEdit: () -> Void
 
     var body: some View {
-        List {
-            Section("状態") {
-                HStack {
-                    Text("監視")
-                    Spacer()
-                    Text(viewModel.monitoringStatusText())
-                        .foregroundColor(viewModel.isMonitoring ? .green : .secondary)
+        ScrollView {
+            VStack(spacing: 20) {
+                statusCard
+                if !tokenEntries.isEmpty {
+                    appListSection
                 }
-                HStack {
-                    Text("最終同期")
-                    Spacer()
-                    Text(viewModel.lastSyncDisplayText())
-                        .foregroundColor(.secondary)
-                        .font(.footnote)
+                resetTimeRow
+                if let message = viewModel.activeErrorMessage() {
+                    summaryErrorBanner(message: message)
                 }
-                HStack {
-                    Text("次回リセット")
-                    Spacer()
+                summaryActionButtons
+                #if DEBUG
+                debugSection
+                #endif
+            }
+            .padding()
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("監視中", systemImage: "shield.fill")
+                    .font(.headline)
+                    .foregroundStyle(.green)
+                Spacer()
+                Text(viewModel.lastSyncDisplayText())
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Divider()
+            HStack {
+                Text("次回リセット")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption2)
                     Text(viewModel.nextResetDisplayText())
-                        .foregroundColor(.secondary)
-                        .font(.footnote)
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var appListSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("監視中のアプリ")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            ForEach(Array(tokenEntries.enumerated()), id: \.offset) { listIndex, entry in
+                if listIndex > 0 {
+                    Divider().padding(.leading, 46)
+                }
+                NavigationLink {
+                    AppDetailView(
+                        title: "アプリ \(entry.index + 1)",
+                        tokenKey: entry.tokenKey,
+                        appIndex: entry.index,
+                        viewModel: viewModel
+                    )
+                } label: {
+                    appRowLabel(entry: entry)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func appRowLabel(entry: (index: Int, tokenKey: String)) -> some View {
+        let isBlocked = viewModel.isBlocked(tokenKey: entry.tokenKey)
+        let remaining = viewModel.remainingMinutes(for: entry.tokenKey)
+        let limit = viewModel.limitMinutes(for: entry.tokenKey)
+        let used = limit - remaining
+        let progress = limit > 0 ? Double(max(used, 0)) / Double(limit) : 1.0
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(appColor(forIndex: entry.index))
+                    .frame(width: 32, height: 32)
+                if isBlocked {
+                    Image(systemName: "lock.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                } else {
+                    Text("\(entry.index + 1)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
                 }
             }
-
-            Section("監視中") {
-                ForEach(tokenEntries, id: \.tokenKey) { entry in
-                    NavigationLink {
-                        AppDetailView(
-                            title: "アプリ \(entry.index + 1)",
-                            tokenKey: entry.tokenKey,
-                            viewModel: viewModel
-                        )
-                    } label: {
-                        HStack {
-                            Image(systemName: viewModel.isBlocked(tokenKey: entry.tokenKey) ? "lock.fill" : "checkmark.circle")
-                                .foregroundColor(viewModel.isBlocked(tokenKey: entry.tokenKey) ? .red : .green)
-                            VStack(alignment: .leading) {
-                                Text("アプリ \(entry.index + 1)")
-                                Text("上限: \(viewModel.limitMinutes(for: entry.tokenKey))分")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text("連続通知: \(viewModel.continuousAlertDisplayText(for: entry.tokenKey))")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("アプリ \(entry.index + 1)")
+                        .font(.subheadline.weight(.medium))
+                    if isBlocked {
+                        Text("制限中")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.red.opacity(0.15))
+                            .foregroundStyle(.red)
+                            .clipShape(Capsule())
                     }
                 }
-            }
-
-            Section("リセット時刻") {
-                Text(String(format: "%02d:%02d", viewModel.resetHour, viewModel.resetMinute))
-            }
-
-            if let message = viewModel.activeErrorMessage() {
-                Section("注意") {
-                    Text(message)
-                        .foregroundColor(.red)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color(.systemFill))
+                            .frame(height: 4)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(isBlocked ? Color.red : appColor(forIndex: entry.index))
+                            .frame(width: geo.size.width * min(progress, 1.0), height: 4)
+                    }
                 }
+                .frame(height: 4)
+                Text("\(limit)分制限")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var resetTimeRow: some View {
+        HStack {
+            Label("リセット時刻", systemImage: "arrow.clockwise.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(String(format: "%02d:%02d", viewModel.resetHour, viewModel.resetMinute))
+                .font(.subheadline.monospacedDigit())
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func summaryErrorBanner(message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.footnote)
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var summaryActionButtons: some View {
+        VStack(spacing: 10) {
+            Button {
+                viewModel.stopMonitoring()
+            } label: {
+                Label("監視を停止", systemImage: "stop.circle")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(!viewModel.isMonitoring)
 
             if !viewModel.isMonitoring {
-                Section {
-                    Button("設定を編集") {
-                        onEdit()
-                    }
+                Button {
+                    onEdit()
+                } label: {
+                    Label("設定を編集", systemImage: "pencil")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
                 }
+                .buttonStyle(.bordered)
             }
-
-            Section {
-                Button("停止") {
-                    viewModel.stopMonitoring()
-                }
-                .disabled(!viewModel.isMonitoring)
-            }
-
-            #if DEBUG
-            Section("DEBUG") {
-                Button("使用時間を即リセット") {
-                    viewModel.debugResetUsage()
-                }
-                Button("即ブロック/解除トグル") {
-                    viewModel.debugToggleBlock()
-                }
-                Button(viewModel.debugForceSyncFailure ? "同期失敗シミュレーション: ON" : "同期失敗シミュレーション: OFF") {
-                    viewModel.debugToggleSyncFailure()
-                }
-                Button("デバッグログをクリア") {
-                    viewModel.clearDebugLogs()
-                }
-            }
-            Section("DEBUGログ") {
-                let logs = Array(viewModel.debugLogs.suffix(30))
-                if logs.isEmpty {
-                    Text("ログなし")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(Array(logs.enumerated()), id: \.offset) { _, log in
-                        Text(log)
-                            .font(.caption2)
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-            #endif
         }
     }
+
+    #if DEBUG
+    private var debugSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DEBUG")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Button("使用時間を即リセット") { viewModel.debugResetUsage() }
+            Button("即ブロック/解除トグル") { viewModel.debugToggleBlock() }
+            Button(
+                viewModel.debugForceSyncFailure
+                    ? "同期失敗シミュレーション: ON"
+                    : "同期失敗シミュレーション: OFF"
+            ) { viewModel.debugToggleSyncFailure() }
+            Button("デバッグログをクリア") { viewModel.clearDebugLogs() }
+            Divider()
+            Text("DEBUGログ")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            let logs = Array(viewModel.debugLogs.suffix(30))
+            if logs.isEmpty {
+                Text("ログなし")
+                    .foregroundStyle(.secondary)
+                    .font(.caption2)
+            } else {
+                ForEach(Array(logs.enumerated()), id: \.offset) { _, log in
+                    Text(log)
+                        .font(.caption2)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+    #endif
 
     private var tokenEntries: [(index: Int, tokenKey: String)] {
         let tokens = Array(viewModel.selection.applicationTokens)
@@ -1423,23 +1664,104 @@ struct SettingsSummaryView: View {
 struct AppDetailView: View {
     let title: String
     let tokenKey: String
+    let appIndex: Int
     @ObservedObject var viewModel: ContentViewModel
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text(title)
-                .font(.title2)
-            Text("上限: \(viewModel.limitMinutes(for: tokenKey))分")
-            Text("連続通知: \(viewModel.continuousAlertDisplayText(for: tokenKey))")
-            Text("残り: \(formatRemaining(viewModel.remainingMinutes(for: tokenKey)))")
-                .font(.headline)
-            Text("現在の連続使用: \(viewModel.continuousUsageStreakMinutes(for: tokenKey))分")
-                .foregroundColor(.secondary)
-            Text(viewModel.isBlocked(tokenKey: tokenKey) ? "制限中" : "使用可能")
-                .foregroundColor(viewModel.isBlocked(tokenKey: tokenKey) ? .red : .green)
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                remainingGauge
+                metricsGrid
+            }
+            .padding()
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var remainingGauge: some View {
+        let remaining = viewModel.remainingMinutes(for: tokenKey)
+        let limit = viewModel.limitMinutes(for: tokenKey)
+        let progress = limit > 0 ? Double(remaining) / Double(limit) : 0.0
+        let gaugeColor: Color = progress > 0.5 ? .green : progress > 0.2 ? .orange : .red
+        let isBlocked = viewModel.isBlocked(tokenKey: tokenKey)
+        return VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(Color(.systemFill), lineWidth: 14)
+                    .frame(width: 160, height: 160)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        gaugeColor,
+                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                    )
+                    .frame(width: 160, height: 160)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.5), value: progress)
+                VStack(spacing: 4) {
+                    Text(formatRemaining(remaining))
+                        .font(.title2.bold().monospacedDigit())
+                        .foregroundStyle(gaugeColor)
+                    Text("残り")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if isBlocked {
+                Label("制限中", systemImage: "lock.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var metricsGrid: some View {
+        let remaining = viewModel.remainingMinutes(for: tokenKey)
+        let limit = viewModel.limitMinutes(for: tokenKey)
+        let used = max(limit - remaining, 0)
+        return LazyVGrid(
+            columns: [GridItem(.flexible()), GridItem(.flexible())],
+            spacing: 14
+        ) {
+            metricCard(label: "日次上限", value: "\(limit)分", icon: "clock", color: .blue)
+            metricCard(label: "使用済み", value: "\(used)分", icon: "chart.bar.fill", color: .indigo)
+            metricCard(
+                label: "連続通知",
+                value: viewModel.continuousAlertDisplayText(for: tokenKey),
+                icon: "bell",
+                color: .orange
+            )
+            metricCard(
+                label: "現在の連続",
+                value: "\(viewModel.continuousUsageStreakMinutes(for: tokenKey))分",
+                icon: "timer",
+                color: .purple
+            )
+        }
+    }
+
+    private func metricCard(label: String, value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                    .font(.subheadline)
+                Spacer()
+            }
+            Text(value)
+                .font(.title3.bold().monospacedDigit())
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func formatRemaining(_ minutes: Int) -> String {
