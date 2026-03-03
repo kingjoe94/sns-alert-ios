@@ -49,6 +49,7 @@ final class AppStore {
     private let continuousLastEventAtKey = "continuousLastEventAt"
     private let continuousLastNotifiedAtKey = "continuousLastNotifiedAt"
     private let continuousActiveIndexKey = "continuousActiveIndex"
+    private let onboardingCompletedKey = "onboardingCompleted"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -118,6 +119,14 @@ final class AppStore {
 
     func saveSetupCompleted(_ value: Bool) {
         defaults.set(value, forKey: setupCompletedKey)
+    }
+
+    func loadOnboardingCompleted() -> Bool {
+        defaults.bool(forKey: onboardingCompletedKey)
+    }
+
+    func saveOnboardingCompleted(_ value: Bool) {
+        defaults.set(value, forKey: onboardingCompletedKey)
     }
 
     func loadUsageMinutes() -> [String: Int] {
@@ -360,6 +369,7 @@ final class ContentViewModel: ObservableObject {
     @Published var resetMinute = 0
     @Published var isMonitoring = false
     @Published var setupCompleted = false
+    @Published var onboardingCompleted = false
     @Published private var uiError: UIErrorKind? = nil
     @Published var syncErrorMessage: String? = nil
     @Published var usageMinutes: [String: Int] = [:]
@@ -400,6 +410,7 @@ final class ContentViewModel: ObservableObject {
         resetMinute = reset.minute
         isMonitoring = store.loadMonitoringEnabled()
         setupCompleted = store.loadSetupCompleted()
+        onboardingCompleted = store.loadOnboardingCompleted()
         usageMinutes = store.loadUsageMinutes()
         continuousUsageMinutes = store.loadContinuousUsageMinutes()
         lastUsageSyncAt = store.loadUsageUpdatedAt()
@@ -1019,6 +1030,16 @@ final class ContentViewModel: ObservableObject {
     private func refreshReportInterval(now: Date) {
         reportInterval = currentReportInterval(now: now)
     }
+
+    func completeOnboarding() {
+        onboardingCompleted = true
+        store.saveOnboardingCompleted(true)
+    }
+
+    func refreshPermissions() async {
+        updateAuthorizationStatus()
+        await refreshNotificationAuthorizationStatus()
+    }
 }
 
 private struct UsageReportHostView: View {
@@ -1069,60 +1090,69 @@ struct ContentView: View {
     @State private var draftContinuousAlertMinutes: Int = 0
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .topLeading) {
-                let isShowingSummary = viewModel.setupCompleted && viewModel.isMonitoring && !showEdit
-                Group {
-                    if isShowingSummary {
-                        SettingsSummaryView(
-                            viewModel: viewModel,
-                            onEdit: {
-                                showEdit = true
+        Group {
+            if !viewModel.onboardingCompleted {
+                OnboardingView(viewModel: viewModel)
+                    .transition(.opacity)
+            } else {
+                NavigationStack {
+                    ZStack(alignment: .topLeading) {
+                        let isShowingSummary = viewModel.setupCompleted && viewModel.isMonitoring && !showEdit
+                        Group {
+                            if isShowingSummary {
+                                SettingsSummaryView(
+                                    viewModel: viewModel,
+                                    onEdit: {
+                                        showEdit = true
+                                    }
+                                )
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                                    removal: .move(edge: .leading).combined(with: .opacity)
+                                ))
+                            } else {
+                                setupView
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .leading).combined(with: .opacity),
+                                        removal: .move(edge: .trailing).combined(with: .opacity)
+                                    ))
+                            }
+                        }
+                        .animation(.easeInOut(duration: 0.3), value: isShowingSummary)
+                        UsageReportHostView(
+                            refreshToken: viewModel.reportRefresh,
+                            selection: viewModel.selection,
+                            interval: viewModel.reportInterval,
+                            onRender: { trigger in
+                                viewModel.markReportHostRendered(trigger: trigger)
                             }
                         )
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                    } else {
-                        setupView
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .leading).combined(with: .opacity),
-                                removal: .move(edge: .trailing).combined(with: .opacity)
-                            ))
+                        .padding(.top, 1)
+                        .padding(.leading, 1)
+                    }
+                    .navigationTitle("SNSアラート")
+                }
+                .onChange(of: viewModel.isMonitoring) { isMonitoring in
+                    if isMonitoring {
+                        showEdit = false
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: isShowingSummary)
-                UsageReportHostView(
-                    refreshToken: viewModel.reportRefresh,
-                    selection: viewModel.selection,
-                    interval: viewModel.reportInterval,
-                    onRender: { trigger in
-                        viewModel.markReportHostRendered(trigger: trigger)
+                .onChange(of: scenePhase) { phase in
+                    if phase == .active {
+                        viewModel.handleAppBecameActive()
                     }
-                )
-                .padding(.top, 1)
-                .padding(.leading, 1)
+                }
+                .familyActivityPicker(isPresented: $showPicker, selection: Binding(
+                    get: { viewModel.selection },
+                    set: { newValue in viewModel.updateSelection(newValue) }
+                ))
+                .transition(.opacity)
             }
-            .navigationTitle("SNSアラート")
         }
         .onAppear {
             viewModel.load()
         }
-        .onChange(of: viewModel.isMonitoring) { isMonitoring in
-            if isMonitoring {
-                showEdit = false
-            }
-        }
-        .onChange(of: scenePhase) { phase in
-            if phase == .active {
-                viewModel.handleAppBecameActive()
-            }
-        }
-        .familyActivityPicker(isPresented: $showPicker, selection: Binding(
-            get: { viewModel.selection },
-            set: { newValue in viewModel.updateSelection(newValue) }
-        ))
+        .animation(.easeInOut(duration: 0.4), value: viewModel.onboardingCompleted)
     }
 
     private var setupView: some View {
@@ -1768,5 +1798,185 @@ struct AppDetailView: View {
         let hours = minutes / 60
         let mins = minutes % 60
         return "\(hours)時間\(mins)分"
+    }
+}
+
+// MARK: - OnboardingView
+
+struct OnboardingView: View {
+    @ObservedObject var viewModel: ContentViewModel
+    @State private var step: Int = 0
+    @State private var slideDirection: Int = 1
+
+    private struct Page {
+        let icon: String
+        let iconColor: Color
+        let title: String
+        let description: String
+    }
+
+    private let pages: [Page] = [
+        Page(
+            icon: "timer",
+            iconColor: .blue,
+            title: "SNSアラートへようこそ",
+            description: "SNSアプリの使用時間を記録し、設定した上限に達すると自動でブロックします。\nスマートフォンとの時間を見直しましょう。"
+        ),
+        Page(
+            icon: "checkmark.shield",
+            iconColor: .green,
+            title: "Screen Time の許可",
+            description: "アプリの使用時間を計測・制限するために Screen Time へのアクセスが必要です。\n次の画面で「続ける」を選択してください。"
+        ),
+        Page(
+            icon: "bell",
+            iconColor: .orange,
+            title: "通知の許可",
+            description: "連続使用アラートを受け取るために通知を許可します。\n使わない場合はスキップできます。"
+        ),
+    ]
+
+    var body: some View {
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                stepDots
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+
+                // ページコンテンツ
+                ZStack {
+                    ForEach(0..<pages.count, id: \.self) { index in
+                        if index == step {
+                            pageContent(for: index)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: slideDirection > 0 ? .trailing : .leading)
+                                        .combined(with: .opacity),
+                                    removal: .move(edge: slideDirection > 0 ? .leading : .trailing)
+                                        .combined(with: .opacity)
+                                ))
+                        }
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: step)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                actionArea
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 48)
+            }
+        }
+    }
+
+    // MARK: ステップドット
+
+    private var stepDots: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<pages.count, id: \.self) { index in
+                Capsule()
+                    .fill(index == step ? Color.blue : Color(.systemFill))
+                    .frame(width: index == step ? 24 : 8, height: 8)
+                    .animation(.easeInOut(duration: 0.2), value: step)
+            }
+        }
+    }
+
+    // MARK: ページコンテンツ
+
+    private func pageContent(for index: Int) -> some View {
+        let page = pages[index]
+        return VStack(spacing: 28) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(page.iconColor.opacity(0.12))
+                    .frame(width: 120, height: 120)
+                Image(systemName: page.icon)
+                    .font(.system(size: 52))
+                    .foregroundStyle(page.iconColor)
+            }
+            VStack(spacing: 14) {
+                Text(page.title)
+                    .font(.title2.bold())
+                    .multilineTextAlignment(.center)
+                Text(page.description)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+            }
+            Spacer()
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: アクションエリア
+
+    @ViewBuilder
+    private var actionArea: some View {
+        switch step {
+        case 0:
+            primaryButton("はじめる") { advance() }
+
+        case 1:
+            VStack(spacing: 12) {
+                primaryButton("Screen Time を許可する") {
+                    Task {
+                        try? await AuthorizationCenter.shared
+                            .requestAuthorization(for: .individual)
+                        await viewModel.refreshPermissions()
+                        advance()
+                    }
+                }
+                skipButton("スキップ") { advance() }
+            }
+
+        case 2:
+            VStack(spacing: 12) {
+                primaryButton("通知を許可する") {
+                    Task {
+                        _ = try? await UNUserNotificationCenter.current()
+                            .requestAuthorization(options: [.alert, .sound])
+                        await viewModel.refreshPermissions()
+                        viewModel.completeOnboarding()
+                    }
+                }
+                skipButton("スキップ") {
+                    viewModel.completeOnboarding()
+                }
+            }
+
+        default:
+            EmptyView()
+        }
+    }
+
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.blue)
+    }
+
+    private func skipButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func advance() {
+        slideDirection = 1
+        withAnimation(.easeInOut(duration: 0.3)) {
+            step = min(step + 1, pages.count - 1)
+        }
     }
 }
