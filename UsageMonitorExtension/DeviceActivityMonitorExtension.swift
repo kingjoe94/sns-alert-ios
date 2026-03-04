@@ -26,7 +26,8 @@ private let usageEventMinIntervalSeconds: TimeInterval = 50
 private let continuousSessionMaxGapSeconds: TimeInterval = 120
 private let lastRearmAtKey = "lastRearmAt"
 private let continuousBlockAppliedAtKey = "continuousBlockAppliedAt"
-private let continuousBlockDurationSeconds: TimeInterval = 300  // 5 minutes
+private let continuousBlockDurationMinutesKey = "continuousBlockDurationMinutes"
+private let continuousBlockDefaultMinutes = 5
 private let monitorName = DeviceActivityName("daily-monitor")
 
 final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
@@ -554,7 +555,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
         if shouldNotify {
             applyBlock(for: token, eventName: "continuous_idx_\(index)", now: now)
-            // Record as a temporary block (auto-expires after continuousBlockDurationSeconds)
+            // Record as a temporary block (auto-expires after configured break duration)
+            let blockMinutes = continuousBlockDurationMinutes(defaults: defaults)
             var appliedAt: [String: Double] = [:]
             if let data = defaults.data(forKey: continuousBlockAppliedAtKey),
                let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
@@ -564,11 +566,11 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             if let encoded = try? JSONEncoder().encode(appliedAt) {
                 defaults.set(encoded, forKey: continuousBlockAppliedAtKey)
             }
-            postContinuousBlockNotification(index: index, streakMinutes: streak, thresholdMinutes: threshold)
+            postContinuousBlockNotification(index: index, streakMinutes: streak, blockDurationMinutes: blockMinutes)
             notifiedAt[idxKey] = now
             notifiedAt[tokenKey] = now
             saveContinuousLastNotifiedAt(notifiedAt, defaults: defaults)
-            appendDebugLog("連続上限で一時ブロック: idx=\(index), streak=\(streak), threshold=\(threshold)", now: now)
+            appendDebugLog("連続上限で一時ブロック: idx=\(index), streak=\(streak), threshold=\(threshold), blockMin=\(blockMinutes)", now: now)
             return true
         }
 
@@ -589,12 +591,16 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         return names[tokenSortKey(token)] ?? "アプリ\(index + 1)"
     }
 
-    private func postContinuousBlockNotification(index: Int, streakMinutes: Int, thresholdMinutes: Int) {
+    private func continuousBlockDurationMinutes(defaults: UserDefaults) -> Int {
+        let saved = defaults.integer(forKey: continuousBlockDurationMinutesKey)
+        return saved > 0 ? saved : continuousBlockDefaultMinutes
+    }
+
+    private func postContinuousBlockNotification(index: Int, streakMinutes: Int, blockDurationMinutes: Int) {
         let content = UNMutableNotificationContent()
         content.title = "SNSアラート"
         let appName = appNameForIndex(index)
-        let blockMinutes = Int(continuousBlockDurationSeconds / 60)
-        content.body = "\(appName)を\(streakMinutes)分連続で使用しました。\(blockMinutes)分間制限します"
+        content.body = "\(appName)を\(streakMinutes)分連続で使用しました。\(blockDurationMinutes)分間休憩します"
         content.sound = .default
         let identifier = "continuous_block_idx_\(index)_\(Int(Date().timeIntervalSince1970))"
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
