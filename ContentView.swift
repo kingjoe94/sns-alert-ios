@@ -1097,11 +1097,20 @@ private struct UsageReportHostView: View {
     }
 
     private var reportFilter: DeviceActivityFilter {
-        // Keep report execution stable by requesting the daily segment broadly,
-        // then map selected tokens inside the report extension.
+        // Specify the monitored applications explicitly so the system
+        // reliably invokes makeConfiguration in the report extension.
+        let apps = selection.applicationTokens
+        if apps.isEmpty {
+            return DeviceActivityFilter(
+                segment: .daily(during: interval),
+                devices: .all
+            )
+        }
         return DeviceActivityFilter(
             segment: .daily(during: interval),
-            devices: .all
+            users: .all,
+            devices: .all,
+            applications: apps
         )
     }
 }

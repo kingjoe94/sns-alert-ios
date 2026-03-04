@@ -15,6 +15,8 @@ private let usageKey = "usageMinutes"
 private let blockedTokensKey = "blockedTokens"
 private let lastResetKey = "lastResetAt"
 private let debugLogsKey = "debugLogs"
+private let appNamesKey = "appNames"
+private let orderedTokensKey = "orderedTokens"
 
 // Override the functions below to customize the shields used in various situations.
 // The system provides a default appearance for any methods that your subclass doesn't override.
@@ -22,16 +24,16 @@ private let debugLogsKey = "debugLogs"
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     override func configuration(shielding application: Application) -> ShieldConfiguration {
         performResetIfNeeded()
-        // Customize the shield as needed for applications.
+        cacheAppName(application)
         return ShieldConfiguration(
             title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
             subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
         )
     }
-    
+
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
         performResetIfNeeded()
-        // Customize the shield as needed for applications shielded because of their category.
+        cacheAppName(application)
         return ShieldConfiguration(
             title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
             subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
@@ -54,6 +56,39 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
             subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
         )
+    }
+
+    private func cacheAppName(_ application: Application) {
+        guard let name = application.localizedDisplayName, !name.isEmpty,
+              let token = application.token,
+              let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        let tokenKey = tokenSortKey(token)
+        var existing: [String: String] = [:]
+        if let data = defaults.data(forKey: appNamesKey),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            existing = decoded
+        }
+        existing[tokenKey] = name
+        // Also store by index if we can resolve it
+        if let items = defaults.array(forKey: orderedTokensKey) as? [Data] {
+            for (index, itemData) in items.enumerated() {
+                if let t = try? JSONDecoder().decode(Token<Application>.self, from: itemData),
+                   tokenSortKey(t) == tokenKey {
+                    existing["idx_\(index)"] = name
+                    break
+                }
+            }
+        }
+        if let data = try? JSONEncoder().encode(existing) {
+            defaults.set(data, forKey: appNamesKey)
+        }
+    }
+
+    private func tokenSortKey<T: Encodable>(_ token: T) -> String {
+        guard let data = try? JSONEncoder().encode(token) else {
+            return String(describing: token)
+        }
+        return data.base64EncodedString()
     }
 
     private func performResetIfNeeded(now: Date = Date()) {
