@@ -7,6 +7,7 @@
 
 import ManagedSettings
 import ManagedSettingsUI
+import FamilyControls
 import UIKit
 
 private let appGroupID = "group.com.xa504.snsalert"
@@ -17,44 +18,42 @@ private let lastResetKey = "lastResetAt"
 private let debugLogsKey = "debugLogs"
 private let appNamesKey = "appNames"
 private let orderedTokensKey = "orderedTokens"
+private let continuousBlockAppliedAtKey = "continuousBlockAppliedAt"
+private let continuousBlockDurationSeconds: TimeInterval = 300  // 5 minutes
 
 // Override the functions below to customize the shields used in various situations.
 // The system provides a default appearance for any methods that your subclass doesn't override.
 // Make sure that your class name matches the NSExtensionPrincipalClass in your Info.plist.
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     override func configuration(shielding application: Application) -> ShieldConfiguration {
-        performResetIfNeeded()
+        let now = Date()
+        performResetIfNeeded(now: now)
         cacheAppName(application)
-        return ShieldConfiguration(
-            title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
-            subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
-        )
+        return shieldConfiguration(for: application, now: now)
     }
 
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        performResetIfNeeded()
+        let now = Date()
+        performResetIfNeeded(now: now)
         cacheAppName(application)
-        return ShieldConfiguration(
-            title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
-            subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
-        )
+        return shieldConfiguration(for: application, now: now)
     }
     
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        performResetIfNeeded()
-        // Customize the shield as needed for web domains.
+        let now = Date()
+        performResetIfNeeded(now: now)
         return ShieldConfiguration(
-            title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
-            subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
+            title: ShieldConfiguration.Label(text: "本日の制限時間に到達しました", color: .white),
+            subtitle: ShieldConfiguration.Label(text: unlockMessage(now: now), color: .white)
         )
     }
-    
+
     override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        performResetIfNeeded()
-        // Customize the shield as needed for web domains shielded because of their category.
+        let now = Date()
+        performResetIfNeeded(now: now)
         return ShieldConfiguration(
-            title: ShieldConfiguration.Label(text: "制限時間に到達しました", color: .white),
-            subtitle: ShieldConfiguration.Label(text: unlockMessage(), color: .white)
+            title: ShieldConfiguration.Label(text: "本日の制限時間に到達しました", color: .white),
+            subtitle: ShieldConfiguration.Label(text: unlockMessage(now: now), color: .white)
         )
     }
 
@@ -103,14 +102,93 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             calendar: calendar
         )
         if let last = defaults.object(forKey: lastResetKey) as? Date, last >= anchor {
+            // Daily reset already done; check for expired continuous blocks
+            checkExpiredContinuousBlocks(defaults: defaults, now: now)
             return
         }
         ManagedSettingsStore(named: managedStoreName).shield.applications = nil
         ManagedSettingsStore().shield.applications = nil
         defaults.removeObject(forKey: blockedTokensKey)
         defaults.removeObject(forKey: usageKey)
+        defaults.removeObject(forKey: continuousBlockAppliedAtKey)
         defaults.set(anchor, forKey: lastResetKey)
         appendDebugLog("ShieldExtで日次リセットを実行: \(anchor)")
+    }
+
+    private func checkExpiredContinuousBlocks(defaults: UserDefaults, now: Date) {
+        guard let data = defaults.data(forKey: continuousBlockAppliedAtKey),
+              let appliedAt = try? JSONDecoder().decode([String: Double].self, from: data),
+              !appliedAt.isEmpty else { return }
+
+        var expiredKeys = Set<String>()
+        var updatedAppliedAt = appliedAt
+        for (key, timestamp) in appliedAt {
+            if now.timeIntervalSince1970 - timestamp >= continuousBlockDurationSeconds {
+                expiredKeys.insert(key)
+                updatedAppliedAt.removeValue(forKey: key)
+            }
+        }
+        guard !expiredKeys.isEmpty else { return }
+
+        // Update the applied-at record
+        if updatedAppliedAt.isEmpty {
+            defaults.removeObject(forKey: continuousBlockAppliedAtKey)
+        } else if let encoded = try? JSONEncoder().encode(updatedAppliedAt) {
+            defaults.set(encoded, forKey: continuousBlockAppliedAtKey)
+        }
+
+        // Remove expired tokens from blockedTokens and rebuild shield
+        guard let blockedData = defaults.array(forKey: blockedTokensKey) as? [Data] else { return }
+        var remainingData: [Data] = []
+        var remainingTokens: [Token<Application>] = []
+        for itemData in blockedData {
+            guard let token = try? JSONDecoder().decode(Token<Application>.self, from: itemData) else {
+                remainingData.append(itemData)
+                continue
+            }
+            if expiredKeys.contains(tokenSortKey(token)) {
+                // Expired continuous block — remove from list
+            } else {
+                remainingData.append(itemData)
+                remainingTokens.append(token)
+            }
+        }
+        defaults.set(remainingData, forKey: blockedTokensKey)
+        let remainingSet: Set<Token<Application>>? = remainingTokens.isEmpty ? nil : Set(remainingTokens)
+        ManagedSettingsStore(named: managedStoreName).shield.applications = remainingSet
+        ManagedSettingsStore().shield.applications = remainingSet
+        appendDebugLog("連続ブロック期限切れ: \(expiredKeys.count)件を解除")
+    }
+
+    private func shieldConfiguration(for application: Application, now: Date) -> ShieldConfiguration {
+        // Check if this is a temporary continuous block still within expiry window
+        if let token = application.token,
+           let defaults = UserDefaults(suiteName: appGroupID),
+           let data = defaults.data(forKey: continuousBlockAppliedAtKey),
+           let appliedAt = try? JSONDecoder().decode([String: Double].self, from: data) {
+            let key = tokenSortKey(token)
+            if let timestamp = appliedAt[key] {
+                let elapsed = now.timeIntervalSince1970 - timestamp
+                let remaining = max(continuousBlockDurationSeconds - elapsed, 0)
+                let subtitle: String
+                if remaining >= 60 {
+                    subtitle = "あと\(Int(remaining / 60))分で解除されます"
+                } else if remaining > 0 {
+                    subtitle = "まもなく解除されます"
+                } else {
+                    subtitle = "画面を閉じて再度お試しください"
+                }
+                return ShieldConfiguration(
+                    title: ShieldConfiguration.Label(text: "連続使用上限に達しました", color: .white),
+                    subtitle: ShieldConfiguration.Label(text: subtitle, color: .white)
+                )
+            }
+        }
+        // Daily (permanent) block
+        return ShieldConfiguration(
+            title: ShieldConfiguration.Label(text: "本日の制限時間に到達しました", color: .white),
+            subtitle: ShieldConfiguration.Label(text: unlockMessage(now: now), color: .white)
+        )
     }
 
     private func unlockMessage(now: Date = Date()) -> String {

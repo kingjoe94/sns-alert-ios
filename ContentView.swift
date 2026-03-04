@@ -52,6 +52,7 @@ final class AppStore {
     private let onboardingCompletedKey = "onboardingCompleted"
     private let appNamesKey = "appNames"
     private let peakStreakKey = "peakStreakMinutes"
+    private let continuousBlockAppliedAtKey = "continuousBlockAppliedAt"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -237,6 +238,7 @@ final class AppStore {
         defaults.removeObject(forKey: continuousLastNotifiedAtKey)
         defaults.removeObject(forKey: continuousActiveIndexKey)
         defaults.removeObject(forKey: peakStreakKey)
+        defaults.removeObject(forKey: continuousBlockAppliedAtKey)
     }
 }
 
