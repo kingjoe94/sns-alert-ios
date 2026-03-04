@@ -19,7 +19,8 @@ private let debugLogsKey = "debugLogs"
 private let appNamesKey = "appNames"
 private let orderedTokensKey = "orderedTokens"
 private let continuousBlockAppliedAtKey = "continuousBlockAppliedAt"
-private let continuousBlockDurationSeconds: TimeInterval = 300  // 5 minutes
+private let continuousBlockDurationMinutesKey = "continuousBlockDurationMinutes"
+private let continuousBlockDefaultMinutes = 5
 
 // Override the functions below to customize the shields used in various situations.
 // The system provides a default appearance for any methods that your subclass doesn't override.
@@ -83,6 +84,12 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         }
     }
 
+    private func continuousBlockDuration(defaults: UserDefaults) -> TimeInterval {
+        let saved = defaults.integer(forKey: continuousBlockDurationMinutesKey)
+        let minutes = saved > 0 ? saved : continuousBlockDefaultMinutes
+        return TimeInterval(minutes * 60)
+    }
+
     private func tokenSortKey<T: Encodable>(_ token: T) -> String {
         guard let data = try? JSONEncoder().encode(token) else {
             return String(describing: token)
@@ -122,8 +129,9 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
         var expiredKeys = Set<String>()
         var updatedAppliedAt = appliedAt
+        let blockDuration = continuousBlockDuration(defaults: defaults)
         for (key, timestamp) in appliedAt {
-            if now.timeIntervalSince1970 - timestamp >= continuousBlockDurationSeconds {
+            if now.timeIntervalSince1970 - timestamp >= blockDuration {
                 expiredKeys.insert(key)
                 updatedAppliedAt.removeValue(forKey: key)
             }
@@ -169,7 +177,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             let key = tokenSortKey(token)
             if let timestamp = appliedAt[key] {
                 let elapsed = now.timeIntervalSince1970 - timestamp
-                let remaining = max(continuousBlockDurationSeconds - elapsed, 0)
+                let remaining = max(continuousBlockDuration(defaults: defaults) - elapsed, 0)
                 let subtitle: String
                 if remaining >= 60 {
                     subtitle = "あと\(Int(remaining / 60))分で解除されます"

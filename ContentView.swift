@@ -53,6 +53,7 @@ final class AppStore {
     private let appNamesKey = "appNames"
     private let peakStreakKey = "peakStreakMinutes"
     private let continuousBlockAppliedAtKey = "continuousBlockAppliedAt"
+    private let continuousBlockDurationMinutesKey = "continuousBlockDurationMinutes"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -130,6 +131,15 @@ final class AppStore {
 
     func saveOnboardingCompleted(_ value: Bool) {
         defaults.set(value, forKey: onboardingCompletedKey)
+    }
+
+    func loadContinuousBlockDurationMinutes() -> Int {
+        let saved = defaults.integer(forKey: continuousBlockDurationMinutesKey)
+        return saved > 0 ? saved : 5
+    }
+
+    func saveContinuousBlockDurationMinutes(_ value: Int) {
+        defaults.set(value, forKey: continuousBlockDurationMinutesKey)
     }
 
     func loadAppNames() -> [String: String] {
@@ -391,6 +401,7 @@ final class ContentViewModel: ObservableObject {
     @Published var usageMinutes: [String: Int] = [:]
     @Published var continuousUsageMinutes: [String: Int] = [:]
     @Published var peakStreakMinutes: [String: Int] = [:]
+    @Published var continuousBlockDurationMinutes: Int = 5
     @Published var lastUsageSyncAt: Date? = nil
     @Published var nextResetAt: Date = Date()
     @Published var blockedTokenKeys: Set<String> = []
@@ -440,6 +451,7 @@ final class ContentViewModel: ObservableObject {
         usageMinutes = store.loadUsageMinutes()
         continuousUsageMinutes = store.loadContinuousUsageMinutes()
         peakStreakMinutes = store.loadPeakStreakMinutes()
+        continuousBlockDurationMinutes = store.loadContinuousBlockDurationMinutes()
         lastUsageSyncAt = store.loadUsageUpdatedAt()
         blockedTokenKeys = Set(store.loadBlockedTokens().map { TokenKey.sortKey($0) })
         debugLogs = store.loadDebugLogs()
@@ -1092,6 +1104,11 @@ final class ContentViewModel: ObservableObject {
         updateAuthorizationStatus()
         await refreshNotificationAuthorizationStatus()
     }
+
+    func updateContinuousBlockDuration(_ minutes: Int) {
+        continuousBlockDurationMinutes = minutes
+        store.saveContinuousBlockDurationMinutes(minutes)
+    }
 }
 
 private struct UsageReportHostView: View {
@@ -1224,6 +1241,7 @@ struct ContentView: View {
                 }
                 appSelectionCard
                 resetTimeCard
+                breakDurationCard
                 Button {
                     viewModel.startMonitoring()
                 } label: {
@@ -1462,6 +1480,35 @@ struct ContentView: View {
         .disabled(viewModel.isMonitoring)
     }
 
+    private var breakDurationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("休憩時間（連続上限後）")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            HStack {
+                Label("ブロック時間", systemImage: "timer")
+                    .foregroundStyle(.primary)
+                Spacer()
+                Picker("休憩時間", selection: Binding(
+                    get: { viewModel.continuousBlockDurationMinutes },
+                    set: { viewModel.updateContinuousBlockDuration($0) }
+                )) {
+                    ForEach([5, 10, 15, 20, 30, 60], id: \.self) { minutes in
+                        Text("\(minutes)分").tag(minutes)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            Text("連続使用の上限に達した際、このアプリを一時的にブロックします。")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .disabled(viewModel.isMonitoring)
+    }
+
     private var setupErrorAndWarningSection: some View {
         VStack(spacing: 8) {
             if let message = viewModel.activeErrorMessage() {
@@ -1506,6 +1553,7 @@ struct SettingsSummaryView: View {
                     appListSection
                 }
                 resetTimeRow
+                breakDurationRow
                 if let message = viewModel.activeErrorMessage() {
                     summaryErrorBanner(message: message)
                 }
@@ -1650,6 +1698,19 @@ struct SettingsSummaryView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(String(format: "%02d:%02d", viewModel.resetHour, viewModel.resetMinute))
+                .font(.subheadline.monospacedDigit())
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var breakDurationRow: some View {
+        HStack {
+            Label("休憩時間", systemImage: "timer")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("\(viewModel.continuousBlockDurationMinutes)分")
                 .font(.subheadline.monospacedDigit())
         }
         .padding()
