@@ -83,12 +83,17 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
                         let seconds = app.totalActivityDuration * ratio
                         usageSeconds[legacyKey, default: 0] += seconds
                         usageSeconds[key, default: 0] += seconds
-                        if let index = tokenIndexMaps.byToken[appToken] ?? tokenIndexMaps.bySortKey[key] ?? tokenIndexMaps.bySortKey[legacyKey] {
+                        let appIndex = tokenIndexMaps.byToken[appToken] ?? tokenIndexMaps.bySortKey[key] ?? tokenIndexMaps.bySortKey[legacyKey]
+                        if let index = appIndex {
                             usageSeconds["idx_\(index)", default: 0] += seconds
                             indexedMatches += 1
                         }
                         if let name = app.application.localizedDisplayName, !name.isEmpty {
                             appNameMap[key] = name
+                            appNameMap[legacyKey] = name
+                            if let index = appIndex {
+                                appNameMap["idx_\(index)"] = name
+                            }
                         }
                     }
                 }
@@ -105,6 +110,9 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
             if let data = try? JSONEncoder().encode(existing) {
                 defaults.set(data, forKey: appNamesKey)
             }
+            appendReportDebugLog("アプリ名を保存: \(appNameMap.count)件 keys=\(appNameMap.keys.sorted().joined(separator: ","))")
+        } else {
+            appendReportDebugLog("アプリ名なし(appNameMap.isEmpty=\(appNameMap.isEmpty))")
         }
         var usageMinutes: [String: Int] = [:]
         usageMinutes.reserveCapacity(usageSeconds.count)

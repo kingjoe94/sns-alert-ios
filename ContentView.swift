@@ -592,7 +592,7 @@ final class ContentViewModel: ObservableObject {
     }
 
     func appName(forIndex index: Int, tokenKey: String) -> String {
-        appNames[tokenKey] ?? "アプリ \(index + 1)"
+        appNames[tokenKey] ?? appNames["idx_\(index)"] ?? "アプリ \(index + 1)"
     }
 
     func limitMinutes(for tokenKey: String) -> Int {
