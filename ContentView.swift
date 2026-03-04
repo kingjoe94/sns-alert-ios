@@ -50,6 +50,7 @@ final class AppStore {
     private let continuousLastNotifiedAtKey = "continuousLastNotifiedAt"
     private let continuousActiveIndexKey = "continuousActiveIndex"
     private let onboardingCompletedKey = "onboardingCompleted"
+    private let appNamesKey = "appNames"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -127,6 +128,11 @@ final class AppStore {
 
     func saveOnboardingCompleted(_ value: Bool) {
         defaults.set(value, forKey: onboardingCompletedKey)
+    }
+
+    func loadAppNames() -> [String: String] {
+        guard let data = defaults.data(forKey: appNamesKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
     }
 
     func loadUsageMinutes() -> [String: Int] {
@@ -370,6 +376,7 @@ final class ContentViewModel: ObservableObject {
     @Published var isMonitoring = false
     @Published var setupCompleted = false
     @Published var onboardingCompleted = false
+    @Published var appNames: [String: String] = [:]
     @Published private var uiError: UIErrorKind? = nil
     @Published var syncErrorMessage: String? = nil
     @Published var usageMinutes: [String: Int] = [:]
@@ -411,6 +418,7 @@ final class ContentViewModel: ObservableObject {
         isMonitoring = store.loadMonitoringEnabled()
         setupCompleted = store.loadSetupCompleted()
         onboardingCompleted = store.loadOnboardingCompleted()
+        appNames = store.loadAppNames()
         usageMinutes = store.loadUsageMinutes()
         continuousUsageMinutes = store.loadContinuousUsageMinutes()
         lastUsageSyncAt = store.loadUsageUpdatedAt()
@@ -575,6 +583,10 @@ final class ContentViewModel: ObservableObject {
         return max(limit - used, 0)
     }
 
+    func appName(forIndex index: Int, tokenKey: String) -> String {
+        appNames[tokenKey] ?? "アプリ \(index + 1)"
+    }
+
     func limitMinutes(for tokenKey: String) -> Int {
         if let value = appLimits[tokenKey] {
             return value
@@ -677,6 +689,7 @@ final class ContentViewModel: ObservableObject {
 
     private func syncUsage(reason: String, triggerReportRefresh: Bool = true) {
         resetIfNeeded(now: Date())
+        appNames = store.loadAppNames()
         var blockedTokens = store.loadBlockedTokens()
         let latestUsage = store.loadUsageMinutes()
         let latestContinuousUsage = store.loadContinuousUsageMinutes()
@@ -1284,7 +1297,7 @@ struct ContentView: View {
                             .font(.caption.bold())
                             .foregroundStyle(.white)
                     )
-                Text("アプリ \(index + 1)")
+                Text(viewModel.appName(forIndex: index, tokenKey: tokenKey))
                     .font(.subheadline.weight(.medium))
                 Spacer()
                 if !viewModel.isMonitoring {
@@ -1532,7 +1545,7 @@ struct SettingsSummaryView: View {
                 }
                 NavigationLink {
                     AppDetailView(
-                        title: "アプリ \(entry.index + 1)",
+                        title: viewModel.appName(forIndex: entry.index, tokenKey: entry.tokenKey),
                         tokenKey: entry.tokenKey,
                         appIndex: entry.index,
                         viewModel: viewModel
@@ -1570,7 +1583,7 @@ struct SettingsSummaryView: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text("アプリ \(entry.index + 1)")
+                    Text(viewModel.appName(forIndex: entry.index, tokenKey: entry.tokenKey))
                         .font(.subheadline.weight(.medium))
                     if isBlocked {
                         Text("制限中")

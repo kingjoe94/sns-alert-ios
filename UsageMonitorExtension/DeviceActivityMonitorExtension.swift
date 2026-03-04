@@ -540,10 +540,24 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         saveContinuousLastNotifiedAt(notifiedAt, defaults: defaults)
     }
 
+    private func appNameForIndex(_ index: Int) -> String {
+        let appNamesKey = "appNames"
+        guard let defaults = UserDefaults(suiteName: appGroupID),
+              let items = defaults.array(forKey: orderedTokensKey) as? [Data],
+              index < items.count,
+              let token = try? JSONDecoder().decode(Token<Application>.self, from: items[index]),
+              let nameData = defaults.data(forKey: appNamesKey),
+              let names = try? JSONDecoder().decode([String: String].self, from: nameData) else {
+            return "アプリ\(index + 1)"
+        }
+        return names[tokenSortKey(token)] ?? "アプリ\(index + 1)"
+    }
+
     private func postContinuousUsageNotification(index: Int, streakMinutes: Int, thresholdMinutes: Int) {
         let content = UNMutableNotificationContent()
         content.title = "SNSアラート"
-        content.body = "アプリ\(index + 1)を\(streakMinutes)分連続で使用しています（通知閾値: \(thresholdMinutes)分）"
+        let appName = appNameForIndex(index)
+        content.body = "\(appName)を\(streakMinutes)分連続で使用しています（通知閾値: \(thresholdMinutes)分）"
         content.sound = .default
         let identifier = "continuous_idx_\(index)_\(Int(Date().timeIntervalSince1970))"
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)

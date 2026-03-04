@@ -14,6 +14,7 @@ private let resetHourKey = "resetHour"
 private let resetMinuteKey = "resetMinute"
 private let debugLogsKey = "debugLogs"
 private let debugForceSyncFailureKey = "debugForceSyncFailure"
+private let appNamesKey = "appNames"
 
 extension DeviceActivityReport.Context {
     static let daily = Self("daily")
@@ -53,6 +54,7 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> String {
         appendReportDebugLog("makeConfiguration開始")
         var usageSeconds: [String: TimeInterval] = [:]
+        var appNameMap: [String: String] = [:]
         let defaults = UserDefaults(suiteName: appGroupID)
         if defaults == nil {
             NSLog("[ReportExt] UserDefaults suite unavailable: %@", appGroupID)
@@ -76,15 +78,32 @@ struct UsageReportConfiguration: DeviceActivityReportScene {
                         guard let appToken = app.application.token else {
                             continue
                         }
-                        let key = tokenKeyForApplication(app.application)
+                        let key = tokenSortKey(appToken)
+                        let legacyKey = tokenKeyForApplication(app.application)
                         let seconds = app.totalActivityDuration * ratio
+                        usageSeconds[legacyKey, default: 0] += seconds
                         usageSeconds[key, default: 0] += seconds
-                        if let index = tokenIndexMaps.byToken[appToken] ?? tokenIndexMaps.bySortKey[key] {
+                        if let index = tokenIndexMaps.byToken[appToken] ?? tokenIndexMaps.bySortKey[key] ?? tokenIndexMaps.bySortKey[legacyKey] {
                             usageSeconds["idx_\(index)", default: 0] += seconds
                             indexedMatches += 1
                         }
+                        if let name = app.application.localizedDisplayName, !name.isEmpty {
+                            appNameMap[key] = name
+                        }
                     }
                 }
+            }
+        }
+        // Merge and persist app names so main app can display them
+        if !appNameMap.isEmpty, let defaults {
+            var existing: [String: String] = [:]
+            if let data = defaults.data(forKey: appNamesKey),
+               let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+                existing = decoded
+            }
+            for (k, v) in appNameMap { existing[k] = v }
+            if let data = try? JSONEncoder().encode(existing) {
+                defaults.set(data, forKey: appNamesKey)
             }
         }
         var usageMinutes: [String: Int] = [:]
