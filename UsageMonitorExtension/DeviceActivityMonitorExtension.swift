@@ -139,7 +139,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         saveUsageMinutes(usage, defaults: defaults)
         defaults.set(now, forKey: usageUpdatedAtKey)
         appendDebugLog("使用時間を同期: idx=\(index), used=\(updated), limit=\(limit)", now: now)
-        updateContinuousUsageAndNotify(token: token, index: index, now: now, defaults: defaults)
+        let continuousBlocked = updateContinuousUsageAndBlock(token: token, index: index, now: now, defaults: defaults)
+        if continuousBlocked { return }
 
         if updated >= limit {
             applyBlock(for: token, eventName: event.rawValue, now: now)
@@ -471,12 +472,13 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         defaults.set(items, forKey: orderedTokensKey)
     }
 
-    private func updateContinuousUsageAndNotify(
+    @discardableResult
+    private func updateContinuousUsageAndBlock(
         token: Token<Application>,
         index: Int,
         now: Date,
         defaults: UserDefaults
-    ) {
+    ) -> Bool {
         let idxKey = "idx_\(index)"
         let tokenKey = tokenSortKey(token)
         var usage = loadContinuousUsageMinutes(defaults: defaults)
@@ -548,13 +550,17 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         )
 
         if shouldNotify {
-            postContinuousUsageNotification(index: index, streakMinutes: streak, thresholdMinutes: threshold)
+            applyBlock(for: token, eventName: "continuous_idx_\(index)", now: now)
+            postContinuousBlockNotification(index: index, streakMinutes: streak, thresholdMinutes: threshold)
             notifiedAt[idxKey] = now
             notifiedAt[tokenKey] = now
-            appendDebugLog("連続使用通知を送信: idx=\(index), streak=\(streak), threshold=\(threshold)", now: now)
+            saveContinuousLastNotifiedAt(notifiedAt, defaults: defaults)
+            appendDebugLog("連続上限でブロック: idx=\(index), streak=\(streak), threshold=\(threshold)", now: now)
+            return true
         }
 
         saveContinuousLastNotifiedAt(notifiedAt, defaults: defaults)
+        return false
     }
 
     private func appNameForIndex(_ index: Int) -> String {
@@ -570,17 +576,17 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         return names[tokenSortKey(token)] ?? "アプリ\(index + 1)"
     }
 
-    private func postContinuousUsageNotification(index: Int, streakMinutes: Int, thresholdMinutes: Int) {
+    private func postContinuousBlockNotification(index: Int, streakMinutes: Int, thresholdMinutes: Int) {
         let content = UNMutableNotificationContent()
         content.title = "SNSアラート"
         let appName = appNameForIndex(index)
-        content.body = "\(appName)を\(streakMinutes)分連続で使用しています（通知閾値: \(thresholdMinutes)分）"
+        content.body = "\(appName)を\(streakMinutes)分連続で使用したため、本日の利用を制限しました"
         content.sound = .default
-        let identifier = "continuous_idx_\(index)_\(Int(Date().timeIntervalSince1970))"
+        let identifier = "continuous_block_idx_\(index)_\(Int(Date().timeIntervalSince1970))"
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error {
-                self?.appendDebugLog("連続使用通知の送信に失敗: idx=\(index), error=\(error)")
+                self?.appendDebugLog("連続上限ブロック通知の送信に失敗: idx=\(index), error=\(error)")
             }
         }
     }

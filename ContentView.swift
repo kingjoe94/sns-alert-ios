@@ -1364,10 +1364,10 @@ struct ContentView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
-                        Text("連続アラート")
+                        Text("連続上限")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Picker("連続アラート", selection: $draftContinuousAlertMinutes) {
+                        Picker("連続上限", selection: $draftContinuousAlertMinutes) {
                             ForEach([0, 5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
                                 if minutes == 0 {
                                     Text("OFF").tag(minutes)
@@ -1403,7 +1403,7 @@ struct ContentView: View {
                 HStack(spacing: 16) {
                     Label(
                         viewModel.continuousAlertDisplayText(for: tokenKey),
-                        systemImage: "bell.fill"
+                        systemImage: "hand.raised.fill"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1584,7 +1584,7 @@ struct SettingsSummaryView: View {
         let captionText: String
         if threshold > 0 {
             progress = min(Double(streak) / Double(threshold), 1.0)
-            captionText = "連続 \(streak)分 / \(threshold)分"
+            captionText = "連続 \(streak)分 / \(threshold)分上限"
         } else {
             progress = limit > 0 ? min(Double(totalUsed) / Double(limit), 1.0) : 0.0
             captionText = "本日 \(totalUsed)分使用"
@@ -1804,9 +1804,9 @@ struct AppDetailView: View {
             spacing: 14
         ) {
             metricCard(
-                label: "アラート設定",
+                label: "連続上限",
                 value: viewModel.continuousAlertDisplayText(for: tokenKey),
-                icon: "bell.fill",
+                icon: "hand.raised.fill",
                 color: .orange
             )
             metricCard(
