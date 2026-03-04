@@ -20,7 +20,7 @@ private let lastResetKey = "lastResetAt"
 private let usageEventAcceptedAtKey = "usageEventAcceptedAt"
 private let resetGraceSeconds: TimeInterval = 30
 private let debugLogsKey = "debugLogs"
-private let defaultLimitMinutes = 30
+private let defaultLimitMinutes = 9 * 60
 private let unsyncedThresholdIgnoreWindowSeconds: TimeInterval = 180
 private let usageEventMinIntervalSeconds: TimeInterval = 50
 private let continuousSessionMaxGapSeconds: TimeInterval = 120
@@ -458,6 +458,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         defaults.removeObject(forKey: continuousLastEventAtKey)
         defaults.removeObject(forKey: continuousLastNotifiedAtKey)
         defaults.removeObject(forKey: continuousActiveIndexKey)
+        defaults.removeObject(forKey: "peakStreakMinutes")
     }
 
     private func limitMinutesForToken(tokenKey: String, index: Int, limits: [String: Int]) -> Int {
@@ -519,6 +520,22 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         saveContinuousUsageMinutes(usage, defaults: defaults)
         defaults.set(now, forKey: continuousLastEventAtKey)
         defaults.set(index, forKey: continuousActiveIndexKey)
+
+        // Update today's peak streak
+        let peakStreakKey = "peakStreakMinutes"
+        var peakStreak: [String: Int] = [:]
+        if let data = defaults.data(forKey: peakStreakKey),
+           let decoded = try? JSONDecoder().decode([String: Int].self, from: data) {
+            peakStreak = decoded
+        }
+        let currentPeak = max(peakStreak[idxKey] ?? 0, peakStreak[tokenKey] ?? 0)
+        if streak > currentPeak {
+            peakStreak[idxKey] = streak
+            peakStreak[tokenKey] = streak
+            if let encoded = try? JSONEncoder().encode(peakStreak) {
+                defaults.set(encoded, forKey: peakStreakKey)
+            }
+        }
 
         let limits = loadContinuousAlertLimits(defaults: defaults)
         let threshold = max(limits[idxKey] ?? limits[tokenKey] ?? 0, 0)

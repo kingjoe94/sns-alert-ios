@@ -51,6 +51,7 @@ final class AppStore {
     private let continuousActiveIndexKey = "continuousActiveIndex"
     private let onboardingCompletedKey = "onboardingCompleted"
     private let appNamesKey = "appNames"
+    private let peakStreakKey = "peakStreakMinutes"
 
     init() {
         defaults = UserDefaults(suiteName: appGroupID) ?? .standard
@@ -133,6 +134,11 @@ final class AppStore {
     func loadAppNames() -> [String: String] {
         guard let data = defaults.data(forKey: appNamesKey) else { return [:] }
         return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+    }
+
+    func loadPeakStreakMinutes() -> [String: Int] {
+        guard let data = defaults.data(forKey: peakStreakKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: Int].self, from: data)) ?? [:]
     }
 
     func loadUsageMinutes() -> [String: Int] {
@@ -230,6 +236,7 @@ final class AppStore {
         defaults.removeObject(forKey: continuousLastEventAtKey)
         defaults.removeObject(forKey: continuousLastNotifiedAtKey)
         defaults.removeObject(forKey: continuousActiveIndexKey)
+        defaults.removeObject(forKey: peakStreakKey)
     }
 }
 
@@ -368,7 +375,7 @@ final class ContentViewModel: ObservableObject {
     @Published var authorized = false
     @Published var notificationAuthorized = false
     @Published var selection = FamilyActivitySelection()
-    let defaultLimitMinutes = 30
+    let defaultLimitMinutes = 9 * 60
     @Published var appLimits: [String: Int] = [:]
     @Published var continuousAlertLimits: [String: Int] = [:]
     @Published var resetHour = 0
@@ -381,6 +388,7 @@ final class ContentViewModel: ObservableObject {
     @Published var syncErrorMessage: String? = nil
     @Published var usageMinutes: [String: Int] = [:]
     @Published var continuousUsageMinutes: [String: Int] = [:]
+    @Published var peakStreakMinutes: [String: Int] = [:]
     @Published var lastUsageSyncAt: Date? = nil
     @Published var nextResetAt: Date = Date()
     @Published var blockedTokenKeys: Set<String> = []
@@ -429,6 +437,7 @@ final class ContentViewModel: ObservableObject {
         appNames = store.loadAppNames()
         usageMinutes = store.loadUsageMinutes()
         continuousUsageMinutes = store.loadContinuousUsageMinutes()
+        peakStreakMinutes = store.loadPeakStreakMinutes()
         lastUsageSyncAt = store.loadUsageUpdatedAt()
         blockedTokenKeys = Set(store.loadBlockedTokens().map { TokenKey.sortKey($0) })
         debugLogs = store.loadDebugLogs()
@@ -644,6 +653,17 @@ final class ContentViewModel: ObservableObject {
         return 0
     }
 
+    func peakStreakForToken(_ tokenKey: String) -> Int {
+        if let value = peakStreakMinutes[tokenKey] {
+            return value
+        }
+        if let index = indexForTokenKey(tokenKey),
+           let indexed = peakStreakMinutes[limitIndexKey(index)] {
+            return indexed
+        }
+        return 0
+    }
+
     func formatRemaining(_ minutes: Int) -> String {
         let hours = minutes / 60
         let mins = minutes % 60
@@ -658,6 +678,7 @@ final class ContentViewModel: ObservableObject {
         usageMinutes = [:]
         store.saveUsageMinutes([:])
         continuousUsageMinutes = [:]
+        peakStreakMinutes = [:]
         store.clearContinuousUsageState()
     }
 
@@ -705,6 +726,7 @@ final class ContentViewModel: ObservableObject {
         let reportLastRunAt = store.loadReportLastRunAt()
         let now = Date()
         continuousUsageMinutes = latestContinuousUsage
+        peakStreakMinutes = store.loadPeakStreakMinutes()
         lastUsageSyncAt = usageUpdatedAt
         refreshNextResetAt(now: now)
 #if DEBUG
@@ -825,6 +847,7 @@ final class ContentViewModel: ObservableObject {
         usageMinutes = [:]
         store.saveUsageMinutes([:])
         continuousUsageMinutes = [:]
+        peakStreakMinutes = [:]
         store.clearContinuousUsageState()
         store.clearUsageEventAcceptedAt()
         store.clearBlockedTokens()
@@ -848,6 +871,7 @@ final class ContentViewModel: ObservableObject {
         usageMinutes = [:]
         store.saveUsageMinutes([:])
         continuousUsageMinutes = [:]
+        peakStreakMinutes = [:]
         store.clearContinuousUsageState()
         store.clearUsageEventAcceptedAt()
         store.clearBlockedTokens()
@@ -898,7 +922,7 @@ final class ContentViewModel: ObservableObject {
         for (index, token) in tokens.enumerated() {
             let tokenKey = TokenKey.sortKey(token)
             let idxKey = limitIndexKey(index)
-            let value = max(normalized[tokenKey] ?? normalized[idxKey] ?? 0, 0)
+            let value = max(normalized[tokenKey] ?? normalized[idxKey] ?? 30, 0)
             normalized[tokenKey] = value
             normalized[idxKey] = value
         }
@@ -1340,49 +1364,10 @@ struct ContentView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
-                        Text("日次上限")
+                        Text("連続アラート")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        ForEach([15, 30, 60], id: \.self) { value in
-                            Button {
-                                draftLimitMinutes = value
-                                viewModel.updateAppLimit(tokenKey: tokenKey, value: value)
-                            } label: {
-                                Text("\(value)分")
-                                    .frame(minWidth: 44, minHeight: 32)
-                            }
-                            .buttonStyle(.plain)
-                            .background(
-                                draftLimitMinutes == value
-                                    ? appColor(forIndex: index).opacity(0.2)
-                                    : Color(.systemFill)
-                            )
-                            .foregroundStyle(
-                                draftLimitMinutes == value ? appColor(forIndex: index) : .primary
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(
-                                        draftLimitMinutes == value
-                                            ? appColor(forIndex: index)
-                                            : Color(.systemFill),
-                                        lineWidth: 1
-                                    )
-                            )
-                        }
-                        Picker("上限", selection: $draftLimitMinutes) {
-                            ForEach(1...300, id: \.self) { minutes in
-                                Text("\(minutes)分").tag(minutes)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    HStack(spacing: 8) {
-                        Text("連続通知")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Picker("連続通知", selection: $draftContinuousAlertMinutes) {
+                        Picker("連続アラート", selection: $draftContinuousAlertMinutes) {
                             ForEach([0, 5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
                                 if minutes == 0 {
                                     Text("OFF").tag(minutes)
@@ -1392,6 +1377,18 @@ struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                    }
+                    HStack(spacing: 8) {
+                        Text("日次上限")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Picker("日次上限", selection: $draftLimitMinutes) {
+                            ForEach(Array(stride(from: 10, through: 600, by: 10)), id: \.self) { minutes in
+                                Text("\(minutes)分").tag(minutes)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .foregroundStyle(.secondary)
                     }
                 }
                 .onChange(of: draftLimitMinutes) { newValue in
@@ -1404,15 +1401,15 @@ struct ContentView: View {
                 }
             } else if !isEditing {
                 HStack(spacing: 16) {
-                    Label("\(currentLimit)分", systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     Label(
                         viewModel.continuousAlertDisplayText(for: tokenKey),
-                        systemImage: "bell"
+                        systemImage: "bell.fill"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    Label("\(currentLimit)分制限", systemImage: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -1579,10 +1576,19 @@ struct SettingsSummaryView: View {
 
     private func appRowLabel(entry: (index: Int, tokenKey: String)) -> some View {
         let isBlocked = viewModel.isBlocked(tokenKey: entry.tokenKey)
-        let remaining = viewModel.remainingMinutes(for: entry.tokenKey)
+        let streak = viewModel.continuousUsageStreakMinutes(for: entry.tokenKey)
+        let threshold = viewModel.continuousAlertLimitMinutes(for: entry.tokenKey)
+        let totalUsed = viewModel.usedMinutes(for: entry.tokenKey)
         let limit = viewModel.limitMinutes(for: entry.tokenKey)
-        let used = limit - remaining
-        let progress = limit > 0 ? Double(max(used, 0)) / Double(limit) : 1.0
+        let progress: Double
+        let captionText: String
+        if threshold > 0 {
+            progress = min(Double(streak) / Double(threshold), 1.0)
+            captionText = "連続 \(streak)分 / \(threshold)分"
+        } else {
+            progress = limit > 0 ? min(Double(totalUsed) / Double(limit), 1.0) : 0.0
+            captionText = "本日 \(totalUsed)分使用"
+        }
         return HStack(spacing: 12) {
             ZStack {
                 Circle()
@@ -1623,7 +1629,7 @@ struct SettingsSummaryView: View {
                     }
                 }
                 .frame(height: 4)
-                Text("\(limit)分制限")
+                Text(captionText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1749,11 +1755,11 @@ struct AppDetailView: View {
     }
 
     private var remainingGauge: some View {
-        let remaining = viewModel.remainingMinutes(for: tokenKey)
-        let limit = viewModel.limitMinutes(for: tokenKey)
-        let progress = limit > 0 ? Double(remaining) / Double(limit) : 0.0
-        let gaugeColor: Color = progress > 0.5 ? .green : progress > 0.2 ? .orange : .red
+        let streak = viewModel.continuousUsageStreakMinutes(for: tokenKey)
+        let threshold = viewModel.continuousAlertLimitMinutes(for: tokenKey)
         let isBlocked = viewModel.isBlocked(tokenKey: tokenKey)
+        let progress = threshold > 0 ? min(Double(streak) / Double(threshold), 1.0) : 0.0
+        let gaugeColor: Color = progress < 0.7 ? .green : progress < 0.9 ? .orange : .red
         return VStack(spacing: 16) {
             ZStack {
                 Circle()
@@ -1769,10 +1775,10 @@ struct AppDetailView: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.5), value: progress)
                 VStack(spacing: 4) {
-                    Text(formatRemaining(remaining))
+                    Text("\(streak)分")
                         .font(.title2.bold().monospacedDigit())
-                        .foregroundStyle(gaugeColor)
-                    Text("残り")
+                        .foregroundStyle(streak > 0 ? gaugeColor : .secondary)
+                    Text("連続使用")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1790,26 +1796,36 @@ struct AppDetailView: View {
     }
 
     private var metricsGrid: some View {
-        let remaining = viewModel.remainingMinutes(for: tokenKey)
-        let limit = viewModel.limitMinutes(for: tokenKey)
-        let used = max(limit - remaining, 0)
+        let streak = viewModel.continuousUsageStreakMinutes(for: tokenKey)
+        let peak = viewModel.peakStreakForToken(tokenKey)
+        let totalUsed = viewModel.usedMinutes(for: tokenKey)
         return LazyVGrid(
             columns: [GridItem(.flexible()), GridItem(.flexible())],
             spacing: 14
         ) {
-            metricCard(label: "日次上限", value: "\(limit)分", icon: "clock", color: .blue)
-            metricCard(label: "使用済み", value: "\(used)分", icon: "chart.bar.fill", color: .indigo)
             metricCard(
-                label: "連続通知",
+                label: "アラート設定",
                 value: viewModel.continuousAlertDisplayText(for: tokenKey),
-                icon: "bell",
+                icon: "bell.fill",
                 color: .orange
             )
             metricCard(
-                label: "現在の連続",
-                value: "\(viewModel.continuousUsageStreakMinutes(for: tokenKey))分",
-                icon: "timer",
+                label: "今日のピーク",
+                value: peak > 0 ? "\(peak)分" : "—",
+                icon: "chart.xyaxis.line",
                 color: .purple
+            )
+            metricCard(
+                label: "現在の連続",
+                value: "\(streak)分",
+                icon: "timer",
+                color: .teal
+            )
+            metricCard(
+                label: "今日の合計",
+                value: "\(totalUsed)分",
+                icon: "clock.fill",
+                color: .indigo
             )
         }
     }
