@@ -401,11 +401,19 @@ final class ContentViewModel: ObservableObject {
     private var wasSyncDelayed = false
     private var didLogMissingReportRun = false
     private var followupSyncWorkItem: DispatchWorkItem?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         syncManager.onTick = { [weak self] in
             self?.syncUsage(reason: "syncTick")
         }
+        AuthorizationCenter.shared.$authorizationStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.authorized = (status == .approved)
+                self?.refreshPermissionErrorState()
+            }
+            .store(in: &cancellables)
     }
 
     func load() {
